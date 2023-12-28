@@ -3,4 +3,4 @@ CXXFLAGS = -std=c++11 -arch arm64 -I$(shell brew --prefix glm)/include -I$(shell
 
 
 myOpenGLApp: main.cpp
-	$(CXX) $(CXXFLAGS) main.cpp -o myOpenGLApp
+	$(CXX) $(CXXFLAGS) main.cpp -o bunnyRun
