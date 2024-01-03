@@ -6,8 +6,7 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
-#define _USE_MATH_DEFINES
-#include <math.h>
+#include <cmath>
 #include <GL/glew.h>
 //#include <OpenGL/gl3.h>   // The GL Header File
 #include <GLFW/glfw3.h> // The GLFW header
@@ -21,7 +20,6 @@ using namespace std;
 
 GLuint gProgram[2];
 GLuint groundProgram;
-int gWidth, gHeight;
 
 GLint modelingMatrixLoc[2];
 GLint viewingMatrixLoc[2];
@@ -41,7 +39,7 @@ glm::vec3 eyePos(0, 0, 0);
 glm::mat4 groundProjectionMatrix;
 glm::mat4 groundViewingMatrix;
 glm::mat4 groundModelingMatrix;
-glm::vec3 groundEyePos(0, 0, 0);
+
 
 int activeProgramIndex = 0;
 
@@ -65,21 +63,27 @@ struct Normal
     GLfloat x, y, z;
 };
 
-struct Face
-{
+struct Face {
     Face(int v[], int t[], int n[]) {
         vIndex[0] = v[0];
         vIndex[1] = v[1];
         vIndex[2] = v[2];
-        tIndex[0] = t[0];
-        tIndex[1] = t[1];
-        tIndex[2] = t[2];
+
+        if (t != nullptr) {  // Check if texture indices are provided
+            tIndex[0] = t[0];
+            tIndex[1] = t[1];
+            tIndex[2] = t[2];
+        } else {
+            tIndex[0] = tIndex[1] = tIndex[2] = 0;  // Safe default value
+        }
+
         nIndex[0] = n[0];
         nIndex[1] = n[1];
         nIndex[2] = n[2];
     }
     GLuint vIndex[3], tIndex[3], nIndex[3];
 };
+
 
 struct Bunny
 {
@@ -104,46 +108,101 @@ struct Bunny
     int gVertexDataSizeInBytes, gNormalDataSizeInBytes;
 
 };
-
 Bunny bunny;
 
-struct Ground
-{
-    std::vector<Vertex> gVertices = {
-            Vertex(-10.0f, -0.1f,  10.0f),
-            Vertex( 10.0f, -0.1f,  10.0f),
-            Vertex( 10.0f, -0.1f, -10.0f),
-            Vertex(-10.0f, -0.1f, -10.0f)
-    };
-    //vector<Texture> gTextures;
-    //Normal upNormal(0.0f, 1.0f, 0.0f); // Pointing upwards
-    std::vector<Normal> gNormals = {Normal(0.0f, 1.0f, 0.0f)};
-
-    int t1[3] = {0, 1, 2};
-    int t2[0] = {};
-    int t3[3] = {0, 0, 0};
-
-    int t4[3] = {0, 2, 3};
-    int t5[1] = {};
-    int t6[3] = {0, 0, 0};
-
-    std::vector<Face> gFaces = {
-            Face(t1, {}, t3), // First triangle
-            Face(t4, {}, t6)  // Second triangle
-    };
-
+// Assuming you have the same structures (Vertex, Texture, Normal, Face) as in your Bunny class
+struct Quad {
+    vector<Vertex> gVertices;
+    vector<Texture> gTextures;
+    vector<Normal> gNormals;
+    vector<Face> gFaces;
 
     GLuint gVertexAttribBuffer, gIndexBuffer;
     GLint gInVertexLoc, gInNormalLoc;
     int gVertexDataSizeInBytes, gNormalDataSizeInBytes;
-
 };
+Quad  quad;
 
-Ground ground;
+bool ParseQuad (const string& fileName) {
+    fstream myfile;
 
+    // Open the input file
+    myfile.open(fileName.c_str(), std::ios::in);
 
+    // Check if the file is successfully opened
+    if (myfile.is_open()) {
+        string curLine;
 
+        // Read the file line by line
+        while (getline(myfile, curLine)) {
+            stringstream str(curLine);
+            GLfloat c1, c2, c3;
+            GLuint index[9];
+            string tmp;
 
+            // Check if the line is non-empty
+            if (curLine.length() >= 2) {
+                // Process vertex data
+                if (curLine[0] == 'v') {
+                    if (curLine[1] == 't') { // Texture coordinate
+                        str >> tmp; // consume "vt"
+                        str >> c1 >> c2;
+                        quad.gTextures.push_back(Texture(c1, c2));
+                    } else if (curLine[1] == 'n') { // Normal vector
+                        str >> tmp; // consume "vn"
+                        str >> c1 >> c2 >> c3;
+                        quad.gNormals.push_back(Normal(c1, c2, c3));
+                    } else { // Vertex position
+                        str >> tmp; // consume "v"
+                        str >> c1 >> c2 >> c3;
+                        quad.gVertices.push_back(Vertex(c1, c2, c3));
+                    }
+                }
+                    // Process face data
+                else if (curLine[0] == 'f') {
+                    str >> tmp; // consume "f"
+                    char c;
+                    int vIndex[3], nIndex[3], tIndex[3];
+                    // Parse indices of vertex/texture/normal for each vertex of the face
+                    str >> vIndex[0];
+                    str >> c >> c; // consume "//"
+                    str >> nIndex[0];
+                    str >> vIndex[1];
+                    str >> c >> c; // consume "//"
+                    str >> nIndex[1];
+                    str >> vIndex[2];
+                    str >> c >> c; // consume "//"
+                    str >> nIndex[2];
+
+                    // Assert to check that vertex and normal indices are matching
+                    assert(vIndex[0] == nIndex[0] &&
+                           vIndex[1] == nIndex[1] &&
+                           vIndex[2] == nIndex[2]); // a limitation for now
+
+                    // Adjust indices to be 0-based instead of 1-based
+                    for (int c = 0; c < 3; ++c) {
+                        vIndex[c] -= 1;
+                        nIndex[c] -= 1;
+                        tIndex[c] -= 1;
+                    }
+
+                    // Add the face data
+                    quad.gFaces.push_back(Face(vIndex, tIndex, nIndex));
+                } else {
+                    // Ignore lines that are not vertex, texture, normal, or face definitions
+                    cout << "Ignoring unidentified line in obj file: " << curLine << endl;
+                }
+            }
+        }
+
+        myfile.close();
+    } else {
+        return false; // Return false if file couldn't be opened
+    }
+    assert(quad.gVertices.size() == quad.gNormals.size());
+
+    return true;
+}
 
 // Function to parse a Wavefront .obj file
 bool ParseObj(const string& fileName) {
@@ -235,9 +294,7 @@ bool ParseObj(const string& fileName) {
     return true; // Return true if parsing was successful
 }
 
-bool ReadDataFromFile(
-        const string& fileName, ///< [in]  Name of the shader file
-        string& data)     ///< [out] The contents of the file
+bool ReadDataFromFile(const string& fileName, string& data)     ///< [out] The contents of the file
 {
     fstream myfile;
     // Open the input
@@ -338,18 +395,19 @@ GLuint createFS(const char* shaderName) {
     // Return the shader object
     return fs;
 }
-void initGroundShaders()
-{
+
+// Function to initialize shaders
+void initQuadShaders() {
     // Create OpenGL shader programs
     groundProgram = glCreateProgram();
 
     // Create and compile shaders for both programs
-    GLuint groundVert = createVS("groundVert.glsl"); // Create vertex shader from "vert.glsl"
-    GLuint groundFrag = createFS("groundFragment.glsl"); // Create fragment shader from "frag.glsl"
+    GLuint vs1 = createVS("groundVert.glsl"); // Create vertex shader from "vert.glsl"
+    GLuint fs1 = createFS("groundFragment.glsl"); // Create fragment shader from "frag.glsl"
 
     // Attach the shaders to the first program
-    glAttachShader(groundProgram, groundVert); // Attach vertex shader
-    glAttachShader(groundProgram, groundFrag); // Attach fragment shader
+    glAttachShader(groundProgram, vs1); // Attach vertex shader
+    glAttachShader(groundProgram, fs1); // Attach fragment shader
 
     // Link the first program
     glLinkProgram(groundProgram); // Link shaders together into the first program
@@ -362,13 +420,14 @@ void initGroundShaders()
         exit(-1);
     }
 
+    // Retrieve and store the locations of uniform variables for both programs
     groundModelingMatrixLoc = glGetUniformLocation(groundProgram, "groundModelingMatrix");
     groundViewingMatrixLoc = glGetUniformLocation(groundProgram, "viewingMatrix");
     groundProjectionMatrixLoc = glGetUniformLocation(groundProgram, "projectionMatrix");
     groundEyePosLoc = glGetUniformLocation(groundProgram, "eyePos");
 
+
 }
-// Function to initialize shaders
 void initBunnyShaders() {
     // Create OpenGL shader programs
     gProgram[0] = glCreateProgram();
@@ -418,44 +477,39 @@ void initBunnyShaders() {
         eyePosLoc[i] = glGetUniformLocation(gProgram[i], "eyePos");
     }
 }
-void initGroundVBO()
-{
-    GLuint vao;
+void initGroundVBO(){
     assert(glGetError() == GL_NONE); // Check for OpenGL errors
+    GLuint vao;
 
     // Generate a new Vertex Array Object (VAO) and bind it
     glGenVertexArrays(1, &vao);
     assert(vao > 0); // Check that VAO was successfully created
     glBindVertexArray(vao); // Bind the VAO
-    if (glIsVertexArray(vao) == GL_TRUE) {
-        std::cout << "VAO is valid." << std::endl;
-    } else {
-        std::cout << "VAO is not valid." << std::endl;
-    }
     cout << "vao = " << vao << endl;
+
     // Enable vertex attribute arrays at location 0 and 1
     glEnableVertexAttribArray(0); // Typically for vertex positions
     glEnableVertexAttribArray(1); // Typically for vertex normals
     assert(glGetError() == GL_NONE); // Check for OpenGL errors
 
     // Generate buffer IDs for vertex attribute buffer and index buffer
-    glGenBuffers(1, &ground.gVertexAttribBuffer); // Buffer for vertex attributes
-    glGenBuffers(1, &ground.gIndexBuffer); // Buffer for indices
-    assert(ground.gVertexAttribBuffer > 0 && ground.gIndexBuffer > 0); // Check buffers were successfully created
-    assert(glGetError() == GL_NONE); // Check for OpenGL errors
+    glGenBuffers(1, &quad.gVertexAttribBuffer); // Buffer for vertex attributes
+    glGenBuffers(1, &quad.gIndexBuffer); // Buffer for indices
+    assert(quad.gVertexAttribBuffer > 0 && quad.gIndexBuffer > 0); // Check buffers were successfully created
+
     // Bind the vertex attribute buffer and the index buffer
-    glBindBuffer(GL_ARRAY_BUFFER, ground.gVertexAttribBuffer);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ground.gIndexBuffer);
-    assert(glGetError() == GL_NONE); // Check for OpenGL errors
+    glBindBuffer(GL_ARRAY_BUFFER, quad.gVertexAttribBuffer);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, quad.gIndexBuffer);
+
     // Calculate the size in bytes of the vertex data and normals
-    ground.gVertexDataSizeInBytes = ground.gVertices.size() * 3 * sizeof(GLfloat);
-    ground.gNormalDataSizeInBytes = ground.gNormals.size() * 3 * sizeof(GLfloat);
-    int indexDataSizeInBytes = ground.gFaces.size() * 3 * sizeof(GLuint);
+    quad.gVertexDataSizeInBytes = quad.gVertices.size() * 3 * sizeof(GLfloat);
+    quad.gNormalDataSizeInBytes = quad.gNormals.size() * 3 * sizeof(GLfloat);
+    int indexDataSizeInBytes = quad.gFaces.size() * 3 * sizeof(GLuint);
 
     // Allocate memory for vertex, normal, and index data
-    GLfloat* vertexData = new GLfloat[ground.gVertices.size() * 3];
-    GLfloat* normalData = new GLfloat[ground.gNormals.size() * 3];
-    GLuint* indexData = new GLuint[ground.gFaces.size() * 3];
+    GLfloat* vertexData = new GLfloat[quad.gVertices.size() * 3];
+    GLfloat* normalData = new GLfloat[quad.gNormals.size() * 3];
+    GLuint* indexData = new GLuint[quad.gFaces.size() * 3];
 
     // Variables to store the min and max values of the vertex positions
     float minX = 1e6, maxX = -1e6;
@@ -463,45 +517,43 @@ void initGroundVBO()
     float minZ = 1e6, maxZ = -1e6;
 
     // Copy vertex positions to the allocated array and find min/max values
-    for (int i = 0; i < ground.gVertices.size(); ++i) {
-        vertexData[3 * i] = ground.gVertices[i].x;
-        vertexData[3 * i + 1] = ground.gVertices[i].y;
-        vertexData[3 * i + 2] = ground.gVertices[i].z;
-    }
+    for(int i = 0; i < quad.gVertices.size(); ++i) {
+        vertexData[3 * i] = quad.gVertices[i].x;
+        vertexData[3 * i + 1] = quad.gVertices[i].y;
+        vertexData[3 * i + 2] = quad.gVertices[i].z;
 
-    // Copy normal data to the allocated array
-    for (int i = 0; i < ground.gNormals.size(); ++i) {
-        normalData[3 * i] = ground.gNormals[i].x;
-        normalData[3 * i + 1] = ground.gNormals[i].y;
-        normalData[3 * i + 2] = ground.gNormals[i].z;
+        // Updating min/max values for each coordinate
+        minX = std::min(minX, quad.gVertices[i].x);
+        maxX = std::max(maxX, quad.gVertices[i].x);
+        minY = std::min(minY, quad.gVertices[i].y);
+        maxY = std::max(maxY, quad.gVertices[i].y);
+        minZ = std::min(minZ, quad.gVertices[i].z);
+        maxZ = std::max(maxZ, quad.gVertices[i].z);
     }
-
-    // Copy index data for each face to the allocated array
-    for (int i = 0; i < ground.gFaces.size(); ++i) {
-        indexData[3 * i] = ground.gFaces[i].vIndex[0];
-        indexData[3 * i + 1] = ground.gFaces[i].vIndex[1];
-        indexData[3 * i + 2] = ground.gFaces[i].vIndex[2];
+    for(int i = 0; i < quad.gNormals.size(); ++i) {
+        normalData[3 * i] = quad.gNormals[i].x;
+        normalData[3 * i + 1] = quad.gNormals[i].y;
+        normalData[3 * i + 2] = quad.gNormals[i].z;
     }
-    assert(glGetError() == GL_NONE); // Check for OpenGL errors
-    // Upload vertex and normal data to the GPU
-    glBufferData(GL_ARRAY_BUFFER, ground.gVertexDataSizeInBytes + ground.gNormalDataSizeInBytes, 0, GL_STATIC_DRAW);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, ground.gVertexDataSizeInBytes, vertexData);
-    glBufferSubData(GL_ARRAY_BUFFER, ground.gVertexDataSizeInBytes, ground.gNormalDataSizeInBytes, normalData);
-    assert(glGetError() == GL_NONE); // Check for OpenGL errors
-    // Upload index data to the GPU
+    for(int i = 0; i < quad.gFaces.size(); ++i) {
+        indexData[3 * i] = quad.gFaces[i].vIndex[0];
+        indexData[3 * i + 1] = quad.gFaces[i].vIndex[1];
+        indexData[3 * i + 2] = quad.gFaces[i].vIndex[2];
+    }
+    //Upload vertex and normal data to the GPU
+    glBufferData(GL_ARRAY_BUFFER, quad.gVertexDataSizeInBytes + quad.gNormalDataSizeInBytes, 0, GL_STATIC_DRAW);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, quad.gVertexDataSizeInBytes, vertexData);
+    glBufferSubData(GL_ARRAY_BUFFER, quad.gVertexDataSizeInBytes, quad.gNormalDataSizeInBytes, normalData);
+    //Upload index data to the GPU
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexDataSizeInBytes, indexData, GL_STATIC_DRAW);
-
-    // Free the CPU-side memory as it's no longer needed
+    //Free the CPU-side memory as it's no longer needed
     delete[] vertexData;
     delete[] normalData;
     delete[] indexData;
-    assert(glGetError() == GL_NONE); // Check for OpenGL errors
-    // Define the layout of the vertex data in the buffer
+    //Define the layout of the vertex data in the buffer
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0); // For vertex positions
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(ground.gVertexDataSizeInBytes)); // For vertex normals
-    assert(glGetError() == GL_NONE); // Check for OpenGL errors
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(quad.gVertexDataSizeInBytes)); // For vertex normals
 }
-// Function to initialize Vertex Buffer Object (VBO) and Vertex Array Object (VAO)
 void initBunnyVBO() {
     assert(glGetError() == GL_NONE); // Check for OpenGL errors
     GLuint vao;
@@ -600,11 +652,17 @@ void init()
 {
     //ParseObj("armadillo.obj");
     ParseObj("hw3_support_files/bunny.obj");
-
+    ParseQuad("hw3_support_files/quad.obj");
+    std::cout << quad.gNormals.size() << std::endl;
+    std::cout << quad.gVertices.size() << std::endl;
+    std::cout << quad.gFaces.size() << std::endl;
+    std::cout << quad.gTextures.size() << std::endl;
+    std::cout << quad.gFaces[0].vIndex[0] << std::endl;
     glEnable(GL_DEPTH_TEST);
     initBunnyShaders();
+    initQuadShaders();
     std::cout << "bunny shader initialized" <<std::endl;
-    initGroundShaders();
+
     std::cout << "ground shader initialized" <<std::endl;
     //initBunnyVBO();
     std::cout << "bunny vbo initialized" <<std::endl;
@@ -623,17 +681,18 @@ void drawBunnyModel()
     std::cout << "draw bunny 615" <<std::endl;
     glDrawElements(GL_TRIANGLES, bunny.gFaces.size() * 3, GL_UNSIGNED_INT, 0);
 }
-
 void drawGroundModel()
 {
     //glBindBuffer(GL_ARRAY_BUFFER, gVertexAttribBuffer);
     //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gIndexBuffer);
 
     //glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
-    //glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(gVertexDataSizeInBytes));
-
-    glDrawElements(GL_TRIANGLES, ground.gFaces.size() * 3, GL_UNSIGNED_INT, 0);
+    //glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(bunny.gVertexDataSizeInBytes));
+    //initBunnyVBO();
+    std::cout << "draw ground 615" <<std::endl;
+    glDrawElements(GL_TRIANGLES, quad.gFaces.size() * 3, GL_UNSIGNED_INT, 0);
 }
+
 
 void bunnyJump()
 {
@@ -681,8 +740,7 @@ void displayBunny() {
     // Update the angle for the next frame
     angle += 0.9;
 }
-void displayGround() {
-    // Set the clear color and clear depth and stencil buffers
+void displayQuad(){
     initGroundVBO();
     glClearColor(1, 1, 0, 1); // Set the clear color to black
     //Translatipn -> Rotation -> Scaling
@@ -694,7 +752,7 @@ void displayGround() {
     glm::vec3 groundPosition = glm::vec3(0.0f, -1.0f, 0.0f); // Example: 1 unit below the origin
 
 // Set the scale of the ground.
-    glm::vec3 groundScale = glm::vec3(10.0f, 1.0f, 10.0f); // Example: 10 units wide and long
+    glm::vec3 groundScale = glm::vec3(100.0f, 100.0f, 1.0f); // Example: 10 units wide and long
 
 // Set the angle of slope for the road
     float slopeAngle = 10.0f; // Slope angle in degrees. Adjust as needed.
@@ -703,9 +761,9 @@ void displayGround() {
     glm::mat4 matR = glm::rotate(glm::mat4(1.0f), glm::radians(slopeAngle), glm::vec3(1.0f, 0.0f, 0.0f)); // Rotating along the X-axis
 
 // Create the modeling matrix for the ground
-    glm::mat4 groundModelingMatrix = glm::translate(glm::mat4(1.0f), groundPosition) // First translate
-                                     * matR                                       // Then rotate
-                                     * glm::scale(glm::mat4(1.0f), groundScale);   // Finally, scale
+    groundModelingMatrix = glm::translate(glm::mat4(1.0f), groundPosition) // First translate
+                    * matR                                       // Then rotate
+                    * glm::scale(glm::mat4(1.0f), groundScale);   // Finally, scale
 
 
     // Use the same projection, viewing, and modeling matrices as the bunny
@@ -725,8 +783,8 @@ void displayGround() {
 
     // Draw the ground model
     drawGroundModel();
-}
 
+}
 void display()
 {
     assert(glGetError() == GL_NONE); // Check for OpenGL errors
@@ -734,11 +792,10 @@ void display()
     glClearDepth(1.0f);       // Set the depth to the farthest
     glClearStencil(0);        // Set the stencil buffer to 0
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT); // Clear buffers
-    displayGround();
+
     displayBunny();
     std::cout<<"bunny displayed"<<std::endl;
-
-
+    displayQuad();
     assert(glGetError() == GL_NONE); // Check for OpenGL errors
     std::cout<<"ground displayed"<<std::endl;
 }
@@ -746,9 +803,6 @@ void reshape(GLFWwindow* window, int w, int h)
 {
     w = w < 1 ? 1 : w;
     h = h < 1 ? 1 : h;
-
-    gWidth = w;
-    gHeight = h;
 
     glViewport(0, 0, w, h);
 
@@ -816,6 +870,7 @@ void mainLoop(GLFWwindow* window) {
 
 int main(int argc, char** argv)   // Create Main Function For Bringing It All Together
 {
+    std::cout << "line 819" << std::endl;
     GLFWwindow* window;
     if (!glfwInit())
     {
@@ -829,7 +884,7 @@ int main(int argc, char** argv)   // Create Main Function For Bringing It All To
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     //glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // uncomment this if on MacOS
-
+    std::cout << "line 833" << std::endl;
     int width = 1000, height = 800;
     window = glfwCreateWindow(width, height, "Simple Example", NULL, NULL);
 
@@ -841,7 +896,7 @@ int main(int argc, char** argv)   // Create Main Function For Bringing It All To
 
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
-
+    std::cout << "line 845" << std::endl;
     // Initialize GLEW to setup the OpenGL Function pointers
     if (GLEW_OK != glewInit())
     {
@@ -854,7 +909,6 @@ int main(int argc, char** argv)   // Create Main Function For Bringing It All To
     strcat(rendererInfo, " - "); // Use strcpy_s on Windows, strcpy on Linux
     strcat(rendererInfo, (const char*)glGetString(GL_VERSION)); // Use strcpy_s on Windows, strcpy on Linux
     glfwSetWindowTitle(window, rendererInfo);
-
     init();
 
     glfwSetKeyCallback(window, keyboard);
