@@ -35,6 +35,7 @@ glm::mat4 projectionMatrix;
 glm::mat4 viewingMatrix;
 glm::mat4 modelingMatrix;
 glm::vec3 eyePos(0, 2, 0);
+glm::vec3 offset(0.0,-2.0,-2.0);
 
 glm::mat4 groundProjectionMatrix;
 glm::mat4 groundViewingMatrix;
@@ -124,7 +125,18 @@ struct Quad {
     int gVertexDataSizeInBytes, gNormalDataSizeInBytes;
 };
 Quad  quad;
+struct Cube{
+    vector<Vertex> gVertices;
+    vector<Texture> gTextures;
+    vector<Normal> gNormals;
+    vector<Face> gFaces;
 
+    GLuint gVertexAttribBuffer, gIndexBuffer;
+    GLint gInVertexLoc, gInNormalLoc;
+    int gVertexDataSizeInBytes, gNormalDataSizeInBytes;
+};
+Cube cube;
+Cube cubeClones[5];
 bool ParseQuad (const string& fileName) {
     fstream myfile;
 
@@ -244,6 +256,7 @@ bool ParseObj(const string& fileName) {
                         bunny.gVertices.push_back(Vertex(c1, c2, c3));
                     }
                 }
+                
                     // Process face data
                 else if (curLine[0] == 'f') {
                     str >> tmp; // consume "f"
@@ -294,6 +307,94 @@ bool ParseObj(const string& fileName) {
     assert(bunny.gVertices.size() == bunny.gNormals.size());
 
     return true; // Return true if parsing was successful
+}
+bool ParseCube(const string& fileName){
+    fstream myfile;
+
+    // Open the input file
+    myfile.open(fileName.c_str(), std::ios::in);
+
+    // Check if the file is successfully opened
+    if (myfile.is_open()) {
+        string curLine;
+
+        // Read the file line by line
+        while (getline(myfile, curLine)) {
+            stringstream str(curLine);
+            GLfloat c1, c2, c3;
+            GLuint index[9];
+            string tmp;
+
+            // Check if the line is non-empty
+            if (curLine.length() >= 2) {
+                // Process vertex data
+                if (curLine[0] == 'v') {
+                    if (curLine[1] == 't') { // Texture coordinate
+                        str >> tmp; // consume "vt"
+                        str >> c1 >> c2;
+                        cube .gTextures.push_back(Texture(c1, c2));
+                    }
+                    else if (curLine[1] == 'n') { // Normal vector
+                        str >> tmp; // consume "vn"
+                        str >> c1 >> c2 >> c3;
+                        cube .gNormals.push_back(Normal(c1, c2, c3));
+                    }
+                    else { // Vertex position
+                        str >> tmp; // consume "v"
+                        str >> c1 >> c2 >> c3;
+                        cube .gVertices.push_back(Vertex(c1, c2, c3));
+                    }
+                }
+                    // Process face data
+                else if (curLine[0] == 'f') {
+                    str >> tmp; // consume "f"
+                    char c;
+                    int vIndex[3], nIndex[3], tIndex[3];
+                    // Parse indices of vertex/texture/normal for each vertex of the face
+                    str >> vIndex[0]; str >> c >> c; // consume "//"
+                    str >> nIndex[0];
+                    str >> vIndex[1]; str >> c >> c; // consume "//"
+                    str >> nIndex[1];
+                    str >> vIndex[2]; str >> c >> c; // consume "//"
+                    str >> nIndex[2];
+
+                    // Assert to check that vertex and normal indices are matching
+                    assert(vIndex[0] == nIndex[0] &&
+                           vIndex[1] == nIndex[1] &&
+                           vIndex[2] == nIndex[2]); // a limitation for now
+
+                    // Adjust indices to be 0-based instead of 1-based
+                    for (int c = 0; c < 3; ++c) {
+                        vIndex[c] -= 1;
+                        nIndex[c] -= 1;
+                        tIndex[c] -= 1;
+                    }
+
+                    // Add the face data
+                    cube .gFaces.push_back(Face(vIndex, tIndex, nIndex));
+                }
+                else {
+                    // Ignore lines that are not vertex, texture, normal, or face definitions
+                    cout << "Ignoring unidentified line in obj file: " << curLine << endl;
+                }
+            }
+        }
+
+        myfile.close();
+    } else {
+        return false; // Return false if file couldn't be opened
+    }
+
+    /*
+    // The commented section would calculate normals for each vertex
+    // if it were not commented out. This is typically used when
+    // the OBJ file doesn't contain normal data.
+    */
+
+    // Check that the number of vertices is equal to the number of normals
+    assert(cube .gVertices.size() == cube .gNormals.size());
+
+    return true;
 }
 
 bool ReadDataFromFile(const string& fileName, string& data)     ///< [out] The contents of the file
@@ -661,7 +762,7 @@ void displayBunny() {
     // Convert angle to radians for rotation
     float angleRad = (float)(angle / 180.0) * M_PI;
     // Compute the modeling matrix (transformation matrix for the object)
-    glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(0.f, -1.0, 3.0)); // Translation
+    glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(0.f, -1.0, 2.8)); // Translation
     glm::mat4 matThop = glm::translate(glm::mat4(1.0), glm::vec3(0.f, bunny.positionY, -4.0)); //bunny hop
     glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(0.15, 0.15, 0.15));      // Scaling
     glm::mat4 matR = glm::rotate<float>(glm::mat4(1.0), (-90. / 180.) * M_PI, glm::vec3(0.0, 1.0, 0.0)); // Rotation around Y
@@ -710,13 +811,16 @@ projectionMatrix = glm::perspective(fovY, aspectRatio, nearPlane, farPlane); */
     glUniform1f(scaleLocation,1);
 
     GLint offsetLocation = glGetUniformLocation(groundProgram, "offset");
-    glUniform3f(offsetLocation, 0.f,-2.f,-2.f);
+
+    glUniform3f(offsetLocation,offset.x,offset.y,offset.z);
     glUniformMatrix4fv(groundProjectionMatrixLoc, 1, GL_FALSE, glm::value_ptr(projectionMatrix));
     glUniformMatrix4fv(groundViewingMatrixLoc, 1, GL_FALSE, glm::value_ptr(viewingMatrix));
     glUniformMatrix4fv(groundModelingMatrixLoc, 1, GL_FALSE, glm::value_ptr(groundModelingMatrix));
     glUniform3fv(groundEyePosLoc, 0.7, glm::value_ptr(eyePos));
 	// Draw the scene
 	drawGroundModel();
+    offset.z -= 0.7;
+    
 
 	//angle += 0.9;
 }
