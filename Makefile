@@ -16,8 +16,9 @@ all: myOpenGLApp
 # Compile and build the application
 myOpenGLApp: $(SOURCES)
 	$(CXX) $(CXXFLAGS) $(SOURCES) $(LDFLAGS) -o $(EXECUTABLE)
-	./$(EXECUTABLE)
+	./$(EXECUTABLE) > output.txt
 
 # Clean up
 clean:
-	rm -f $(EXECUTABLE)
+	rm -f $(EXECUTABLE) output.txt
+

@@ -1,20 +1,24 @@
 #version 330 core
 
-in vec4 fragWorldPos; // Position from vertex shader, renamed to match your vertex shader output
+in vec4 fragWorldPos; // From vertex shader
+out vec4 color;
 
-uniform float offset; // Offset for the checkerboard
-uniform float scale; // Scale for the checkerboard
-
-out vec4 fragColor;
+uniform float scale;
+uniform vec3 offset;
+uniform vec3 color1;
+uniform vec3 color2;
 
 void main() {
-    // Compute checkerboard pattern using x and z coordinates
-    bool x = int((fragWorldPos.x + offset) * scale) % 2 != 0;
+   bool x = int((fragWorldPos.x + offset) * scale) % 2 != 0;
+    bool y = int((fragWorldPos.y + offset) * scale) % 2 != 0;
     bool z = int((fragWorldPos.z + offset) * scale) % 2 != 0;
-    bool checker = x != z;
 
-    vec3 black = vec3(0.0, 0.0, 0.0); // Black color
-    vec3 white = vec3(1.0, 1.0, 1.0); // White color
-    fragColor = vec4(checker ? black : white, 1.0);
-    fragColor = vec4(1.0, 1.0, 1.0, 1.0);
+    // Perform XOR operation on the boolean values
+    bool xorXY = x != y;
+    bool checkerPattern = xorXY != z;
+    if (checkerPattern) {
+        color = vec4(color1, 1.0f);
+    } else {
+        color = vec4(color2, 1.0f);
+    }
 }

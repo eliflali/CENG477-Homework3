@@ -1,0 +1,19 @@
+line 819
+line 833
+line 845
+VS compile log: 
+FS compile log: 
+VS compile log: 
+FS compile log: 
+VS compile log: 
+FS compile log: 
+vao = 1
+minX = 1e+06
+maxX = -1e+06
+minY = 1e+06
+maxY = -1e+06
+minZ = 1e+06
+maxZ = -1e+06
+vaoG = 2
+bunny shader initialized
+ground shader initialized

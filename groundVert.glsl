@@ -22,3 +22,5 @@ void main(void) {
     // Transform the vertex position to clip space
     gl_Position = projectionMatrix * viewingMatrix * modelingMatrix * vec4(inVertex, 1);
 }
+
+
