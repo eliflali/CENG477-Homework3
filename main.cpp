@@ -20,6 +20,7 @@ using namespace std;
 
 GLuint gProgram[2];
 GLuint groundProgram;
+GLuint cubeProgram;
 
 GLint modelingMatrixLoc[2];
 GLint viewingMatrixLoc[2];
@@ -31,22 +32,73 @@ GLint groundViewingMatrixLoc;
 GLint groundProjectionMatrixLoc;
 GLint groundEyePosLoc;
 
+GLint scaleLocation;
+GLint offsetLocation;
+GLint color1Location;
+GLint color2Location;
+
+int colorRandomizer[3];
+
+
+/*cubeModelingMatrixLoc = glGetUniformLocation(cubeProgram, "modelingMatrix");
+    cubeViewingMatrixLoc = glGetUniformLocation(cubeProgram, "viewingMatrix");
+    cubeProjectionMatrixLoc = glGetUniformLocation(cubeProgram, "projectionMatrix");
+    cubeEyePosLoc = glGetUniformLocation(cubeProgram, "eyePos");
+    cubeScaleLocation = glGetUniformLocation(cubeProgram, "scale");
+    cubeOffsetLocation = glGetUniformLocation(cubeProgram, "offset");
+    cubeColor1Location = glGetUniformLocation(cubeProgram, "color");*/
+GLint cubeModelingMatrixLoc;
+GLint cubeViewingMatrixLoc;
+GLint cubeProjectionMatrixLoc;
+GLint cubeEyePosLoc;
+GLint cubeScaleLocation;
+GLint cubeOffsetLocation;
+GLint cubeColor1Location;
+GLint cubeLightColorLocation;
+GLint cubeLightPosLocation;
+
+
+
 glm::mat4 projectionMatrix;
 glm::mat4 viewingMatrix;
 glm::mat4 modelingMatrix;
 glm::vec3 eyePos(0, 2, 0);
 glm::vec3 offset(0.0,-2.0,-2.0);
+glm::vec3 Coffset(0.0,-2.0,-2.0);
 
 glm::mat4 groundProjectionMatrix;
 glm::mat4 groundViewingMatrix;
 glm::mat4 groundModelingMatrix;
 
+glm::mat4 cubeProjectionMatrix;
+glm::mat4 cubeViewingMatrix;
+glm::mat4 cubeModelingMatrix;
+
+
+
 GLuint vao;
 GLuint vaoG;
+GLuint vaoCube;
 
 int activeProgramIndex = 0;
 
 const double gravity = -0.0025;
+
+void cubeRand()
+{
+    int randomYellow = rand() %3;
+    for(int i = 0; i < 3; i++)
+    {
+        if(i == randomYellow)
+        {
+            colorRandomizer[i] = 1;
+        }
+        else
+        {
+            colorRandomizer[i] = 0;
+        }
+    }
+}
 
 struct Vertex
 {
@@ -332,17 +384,17 @@ bool ParseCube(const string& fileName){
                     if (curLine[1] == 't') { // Texture coordinate
                         str >> tmp; // consume "vt"
                         str >> c1 >> c2;
-                        cube .gTextures.push_back(Texture(c1, c2));
+                        cube.gTextures.push_back(Texture(c1, c2));
                     }
                     else if (curLine[1] == 'n') { // Normal vector
                         str >> tmp; // consume "vn"
                         str >> c1 >> c2 >> c3;
-                        cube .gNormals.push_back(Normal(c1, c2, c3));
+                        cube.gNormals.push_back(Normal(c1, c2, c3));
                     }
                     else { // Vertex position
                         str >> tmp; // consume "v"
                         str >> c1 >> c2 >> c3;
-                        cube .gVertices.push_back(Vertex(c1, c2, c3));
+                        cube.gVertices.push_back(Vertex(c1, c2, c3));
                     }
                 }
                     // Process face data
@@ -371,7 +423,7 @@ bool ParseCube(const string& fileName){
                     }
 
                     // Add the face data
-                    cube .gFaces.push_back(Face(vIndex, tIndex, nIndex));
+                    cube.gFaces.push_back(Face(vIndex, tIndex, nIndex));
                 }
                 else {
                     // Ignore lines that are not vertex, texture, normal, or face definitions
@@ -392,7 +444,7 @@ bool ParseCube(const string& fileName){
     */
 
     // Check that the number of vertices is equal to the number of normals
-    assert(cube .gVertices.size() == cube .gNormals.size());
+    assert(cube.gVertices.size() == cube.gNormals.size());
 
     return true;
 }
@@ -546,12 +598,32 @@ void initShaders()
     groundViewingMatrixLoc = glGetUniformLocation(groundProgram, "viewingMatrix");
     groundProjectionMatrixLoc = glGetUniformLocation(groundProgram, "projectionMatrix");
     groundEyePosLoc = glGetUniformLocation(groundProgram, "eyePos");
-    GLint scaleLocation = glGetUniformLocation(groundProgram, "scale");
-    GLint offsetLocation = glGetUniformLocation(groundProgram, "offset");
-    GLint color1Location = glGetUniformLocation(groundProgram, "color1");
-    GLint color2Location = glGetUniformLocation(groundProgram, "color2");
-    
-
+    scaleLocation = glGetUniformLocation(groundProgram, "scale");
+    offsetLocation = glGetUniformLocation(groundProgram, "offset");
+    color1Location = glGetUniformLocation(groundProgram, "color1");
+    color2Location = glGetUniformLocation(groundProgram, "color2");
+    //now for cube
+    cubeProgram = glCreateProgram();
+    GLuint cubeVS = createVS("cubeVert.glsl");
+    GLuint cubeFS = createFS("cubeFrag.glsl");
+    glAttachShader(cubeProgram, cubeVS);
+    glAttachShader(cubeProgram, cubeFS);
+    glLinkProgram(cubeProgram);
+    glGetProgramiv(cubeProgram, GL_LINK_STATUS, &status);
+    if (status != GL_TRUE)
+    {
+        cout << "Program link failed" << endl;
+        exit(-1);
+    }
+    cubeModelingMatrixLoc = glGetUniformLocation(cubeProgram, "modelingMatrix");
+    cubeViewingMatrixLoc = glGetUniformLocation(cubeProgram, "viewingMatrix");
+    cubeProjectionMatrixLoc = glGetUniformLocation(cubeProgram, "projectionMatrix");
+    cubeEyePosLoc = glGetUniformLocation(cubeProgram, "eyePos");
+    cubeColor1Location = glGetUniformLocation(cubeProgram, "objectColor");
+    cubeLightPosLocation = glGetUniformLocation(cubeProgram, "lightPos");
+    cubeScaleLocation = glGetUniformLocation(cubeProgram, "scale");
+    cubeOffsetLocation = glGetUniformLocation(cubeProgram, "offset");
+    cubeLightColorLocation = glGetUniformLocation(cubeProgram, "lightColor");
 }
 
 void initVBO()
@@ -672,12 +744,63 @@ void initVBO()
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(quad.gVertexDataSizeInBytes));
  
+    //NOW SAME FOR CUBE
+    glGenVertexArrays(1, &vaoCube);
+    assert(vaoCube > 0);
+    glBindVertexArray(vaoCube);
+    cout << "vaoCube = " << vaoCube << endl;
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    assert(glGetError() == GL_NONE);
+    glGenBuffers(1, &cube.gVertexAttribBuffer);
+    glGenBuffers(1, &cube.gIndexBuffer);
+    assert(cube.gVertexAttribBuffer > 0 && cube.gIndexBuffer > 0);
+    glBindBuffer(GL_ARRAY_BUFFER, cube.gVertexAttribBuffer);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,  cube.gIndexBuffer);
+    cube.gVertexDataSizeInBytes =  cube.gVertices.size() * 3 * sizeof(GLfloat); 
+    cube.gNormalDataSizeInBytes =  cube.gNormals.size() * 3 * sizeof(GLfloat);
+    int indexDataSizeInBytesC =  cube.gFaces.size() * 3 * sizeof(GLuint);
+    GLfloat* vertexDataC = new GLfloat[ cube.gVertices.size() * 3];
+    GLfloat* normalDataC = new GLfloat[ cube.gNormals.size() * 3];
+    GLint* indexDataC = new GLint[ cube.gFaces.size() * 3];
+    for(int i = 0; i < cube.gVertices.size(); ++i) {
+        vertexDataC[3 * i] = cube.gVertices[i].x;
+        vertexDataC[3 * i + 1] = cube.gVertices[i].y;
+        vertexDataC[3 * i + 2] = cube.gVertices[i].z;
+    }
+    for(int i = 0; i < cube.gNormals.size(); ++i) {
+        normalDataC[3 * i] = cube.gNormals[i].x;
+        normalDataC[3 * i + 1] = cube.gNormals[i].y;
+        normalDataC[3 * i + 2] = cube.gNormals[i].z;
+    }
+    for(int i = 0; i < cube.gFaces.size(); ++i) {
+        indexDataC[3 * i] = cube.gFaces[i].vIndex[0];
+        indexDataC[3 * i + 1] = cube.gFaces[i].vIndex[1];
+        indexDataC[3 * i + 2] = cube.gFaces[i].vIndex[2];
+    }
+    glBufferData(GL_ARRAY_BUFFER, cube.gVertexDataSizeInBytes + cube.gNormalDataSizeInBytes, 0, GL_STATIC_DRAW);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, cube.gVertexDataSizeInBytes, vertexDataC);
+    glBufferSubData(GL_ARRAY_BUFFER, cube.gVertexDataSizeInBytes, cube.gNormalDataSizeInBytes, normalDataC);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER,indexDataSizeInBytesC, indexDataC, GL_STATIC_DRAW);
+    // done copying to GPU memory; can free now from CPU memory
+    delete[] vertexDataC;
+    delete[] normalDataC;
+    delete[] indexDataC;
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(cube.gVertexDataSizeInBytes));
 }
 void init()
 {
     //ParseObj("armadillo.obj");
     ParseObj("hw3_support_files/bunny.obj");
     ParseQuad("hw3_support_files/quad.obj");
+    ParseCube("hw3_support_files/cube.obj");
+    std::cout << cube.gVertices.size() << std::endl;
+    std::cout << cube.gNormals.size() << std::endl;
+    std::cout << cube.gFaces.size() << std::endl;
+    std::cout << cube.gTextures.size() << std::endl;
+    std::cout << cube.gFaces[0].vIndex[0] << std::endl;
+    std::cout << cube.gVertexAttribBuffer << std::endl;
     /* 
     std::cout << quad.gNormals.size() << std::endl;
     std::cout << quad.gVertices.size() << std::endl;
@@ -688,6 +811,7 @@ void init()
     glEnable(GL_DEPTH_TEST);
     initShaders();
     initVBO();
+    cubeRand();
 
     std::cout << "bunny shader initialized" <<std::endl; 
 
@@ -708,36 +832,6 @@ void drawBunnyModel()
 }
 void drawGroundModel()
 {
-    //glBindBuffer(GL_ARRAY_BUFFER, gVertexAttribBuffer);
-    //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gIndexBuffer);
-
-    //glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
-    //glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(bunny.gVertexDataSizeInBytes));
-    //initBunnyVBO();
-    /* std::cout << " bufferlara bakalım" <<std::endl;
-    std::cout << quad.gVertexAttribBuffer <<std::endl;
-    std::cout << quad.gIndexBuffer <<std::endl;
-    std::cout << quad.gInNormalLoc <<std::endl;
-    std::cout << quad.gInVertexLoc <<std::endl;
-    std::cout << quad.gVertexDataSizeInBytes <<std::endl;
-    std::cout << quad.gNormalDataSizeInBytes <<std::endl;
-    std::cout << quad.gFaces.size() <<std::endl;
-    std::cout << quad.gTextures.size() <<std::endl;
-    std::cout << quad.gVertices.size() <<std::endl;
-    std::cout << quad.gNormals.size() <<std::endl;
-    std::cout << "bufferlar bitti" <<std::endl;
-    std::cout << "all quad vertice locations" <<std::endl;
-    for(int i = 0; i < quad.gVertices.size(); ++i) {
-        std::cout << quad.gVertices[i].x << " " << quad.gVertices[i].y << " " << quad.gVertices[i].z << std::endl;
-    }
-    std::cout << "all quad normal locations" <<std::endl;
-    for(int i = 0; i < quad.gNormals.size(); ++i) {
-        std::cout << quad.gNormals[i].x << " " << quad.gNormals[i].y << " " << quad.gNormals[i].z << std::endl;
-    }
-    std::cout << "all quad texture locations" <<std::endl;
-    for(int i = 0; i < quad.gTextures.size(); ++i) {
-        std::cout << quad.gTextures[i].u << " " << quad.gTextures[i].v << std::endl;
-    } */
     glBindVertexArray(vaoG);
     glDrawElements(GL_TRIANGLES, quad.gFaces.size() * 3, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
@@ -784,12 +878,7 @@ void displayBunny() {
 void displayQuad(){
 
 	float angleRad = (float)(10 / 180.0) * M_PI;
-    /* float fovY = glm::radians(90.0f); // Convert degrees to radians
-float aspectRatio = static_cast<float>(width) / height; // Assuming you have current window dimensions available
-float nearPlane = 0.1f;
-float farPlane = 200.0f;
-
-projectionMatrix = glm::perspective(fovY, aspectRatio, nearPlane, farPlane); */
+   
 	// Compute the modeling matrix 
 	glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(0.f, -2.f, -2.f));
 	glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(3.0, 1.0, 1000.0));
@@ -801,16 +890,16 @@ projectionMatrix = glm::perspective(fovY, aspectRatio, nearPlane, farPlane); */
     glUseProgram(groundProgram);
 
 // Set the uniform values
-    GLint color1Location = glGetUniformLocation(groundProgram, "color1");
-    glUniform3f(color1Location, 1.f,0.f,1.f);
-
-    GLint color2Location = glGetUniformLocation(groundProgram, "color2");
-    glUniform3f(color2Location, 0.f,1.f,0.f);
-
-    GLint scaleLocation = glGetUniformLocation(groundProgram, "scale");
+    //GLint color1Location = glGetUniformLocation(groundProgram, "color1");
+    //make color1 fuchsia
+    glUniform3f(color1Location, 1.f,0.f,0.6f);
+    //GLint color2Location = glGetUniformLocation(groundProgram, "color2");
+    //make color2 turquoise
+    glUniform3f(color2Location, 0.f,1.f,0.8f);
+    //GLint scaleLocation = glGetUniformLocation(groundProgram, "scale");
     glUniform1f(scaleLocation,1);
 
-    GLint offsetLocation = glGetUniformLocation(groundProgram, "offset");
+    //GLint offsetLocation = glGetUniformLocation(groundProgram, "offset");
 
     glUniform3f(offsetLocation,offset.x,offset.y,offset.z);
     glUniformMatrix4fv(groundProjectionMatrixLoc, 1, GL_FALSE, glm::value_ptr(projectionMatrix));
@@ -818,14 +907,54 @@ projectionMatrix = glm::perspective(fovY, aspectRatio, nearPlane, farPlane); */
     glUniformMatrix4fv(groundModelingMatrixLoc, 1, GL_FALSE, glm::value_ptr(groundModelingMatrix));
     glUniform3fv(groundEyePosLoc, 0.7, glm::value_ptr(eyePos));
 	// Draw the scene
+
 	drawGroundModel();
-    offset.z -= 0.7;
-    
+    offset.z -= 0.5;
 
 	//angle += 0.9;
 }
 
+void drawCube(){
+    glDrawElements(GL_TRIANGLES, cube.gFaces.size() * 3, GL_UNSIGNED_INT, 0);
+}
 
+void displayCube(){
+    float angleRad = (float)(10 / 180.0) * M_PI;
+    glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(5, -2.f, -100.f));
+	glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(.5, 5.0,0.3));
+	glm::mat4 matR = glm::rotate<float>(glm::mat4(1.0), (-180. / 180.) * M_PI, glm::vec3(1.0, 0.0, 0.0));
+	glm::mat4 matRz = glm::rotate(glm::mat4(1.0), angleRad, glm::vec3(1.0, 0.0, 0.0));
+
+	cubeModelingMatrix = matT * matS ; // starting from right side, rotate around Y to turn back, then rotate around Z some more at each frame, then translate.
+    for(int i =0 ; i<3 ; i++){
+        cubeModelingMatrix = glm::translate(cubeModelingMatrix, glm::vec3(-5.f, 0.f, 0.f));
+        if(colorRandomizer[i] == 0){
+            //red
+            glUniform3f(cubeColor1Location, 1.f,0.f,0.1f);
+        }
+        else{
+            //make it yellow
+            glUniform3f(cubeColor1Location, 1.f,1.f,0.1f);
+        }
+        glUniform3f(cubeLightPosLocation, 5.f,5.f,5.f);
+        glUniform3f(cubeLightColorLocation, 1.f,1.f,1.f);
+        glUniform1f(cubeScaleLocation,1);
+        glUniform3f(cubeOffsetLocation,Coffset.x,Coffset.y,Coffset.z);
+        glUniformMatrix4fv(cubeProjectionMatrixLoc, 1, GL_FALSE, glm::value_ptr(projectionMatrix));
+        glUniformMatrix4fv(cubeViewingMatrixLoc, 1, GL_FALSE, glm::value_ptr(viewingMatrix));
+        glUniformMatrix4fv(cubeModelingMatrixLoc, 1, GL_FALSE, glm::value_ptr(cubeModelingMatrix));
+        glUniform3fv(cubeEyePosLoc, 0.7, glm::value_ptr(eyePos));
+        drawCube();
+        std::cout << Coffset.z << "offset cubess"<< std::endl;
+        if(Coffset.z >= 97.2){
+            Coffset.z = -2 ;
+            cubeRand();
+
+        }
+    }
+            Coffset.z += 0.5;
+
+}
 
 void display()
 {
@@ -835,6 +964,10 @@ void display()
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
     displayBunny();
     displayQuad();
+    glUseProgram(cubeProgram);
+    glBindVertexArray(vaoCube);
+    displayCube();
+    glBindVertexArray(0);
 }
 
 void reshape(GLFWwindow* window, int w, int h)
