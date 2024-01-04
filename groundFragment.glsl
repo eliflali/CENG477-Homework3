@@ -9,9 +9,9 @@ uniform vec3 color1;
 uniform vec3 color2;
 
 void main() {
-   bool x = int((fragWorldPos.x + offset) * scale) % 2 != 0;
-    bool y = int((fragWorldPos.y + offset) * scale) % 2 != 0;
-    bool z = int((fragWorldPos.z + offset) * scale) % 2 != 0;
+   bool x = int((fragWorldPos.x + offset.x + 200) * scale) % 2 != 0;
+    bool y = int((fragWorldPos.y + offset.y ) * scale) % 2 != 0;
+    bool z = int((fragWorldPos.z + offset.z) * scale) % 2 != 0;
 
     // Perform XOR operation on the boolean values
     bool xorXY = x != y;
