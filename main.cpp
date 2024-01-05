@@ -115,7 +115,7 @@ bool restartState = false;
 double score  = 0;
 
 float gameSpeed = 0.2;
-float gameAcceleration = 0;
+float gameAcceleration = 0.001;
 
 GLuint skyTexture;
 
