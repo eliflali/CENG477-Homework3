@@ -13,6 +13,9 @@
 #include <glm/glm.hpp> // GL Math library header
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 
 #define BUFFER_OFFSET(i) ((char*)NULL + (i))
 
@@ -21,6 +24,7 @@ using namespace std;
 GLuint gProgram[2];
 GLuint groundProgram;
 GLuint cubeProgram;
+GLuint skyProgram;
 
 GLint modelingMatrixLoc[2];
 GLint viewingMatrixLoc[2];
@@ -32,10 +36,22 @@ GLint groundViewingMatrixLoc;
 GLint groundProjectionMatrixLoc;
 GLint groundEyePosLoc;
 
+GLint skyModelingMatrixLoc;
+GLint skyViewingMatrixLoc;
+GLint skyProjectionMatrixLoc;
+GLint skyEyePosLoc;
+GLint skyTextureLocation;
+
+
 GLint scaleLocation;
 GLint offsetLocation;
 GLint color1Location;
 GLint color2Location;
+
+
+glm::vec3 red(1.f,0.f,0.1f);
+glm::vec3 yellow(1.f,1.f,0.1f);
+
 
 int colorRandomizer[3];
 
@@ -58,7 +74,7 @@ GLint cubeLightColorLocation;
 GLint cubeLightPosLocation;
 
 
-
+//BUNNY
 glm::mat4 projectionMatrix;
 glm::mat4 viewingMatrix;
 glm::mat4 modelingMatrix;
@@ -70,19 +86,26 @@ glm::mat4 groundProjectionMatrix;
 glm::mat4 groundViewingMatrix;
 glm::mat4 groundModelingMatrix;
 
+glm::mat4 skyProjectionMatrix;
+glm::mat4 skyViewingMatrix;
+glm::mat4 skyModelingMatrix;
+
 glm::mat4 cubeProjectionMatrix;
 glm::mat4 cubeViewingMatrix;
 glm::mat4 cubeModelingMatrix;
 
-
+bool pause = false;
 
 GLuint vao;
 GLuint vaoG;
+GLuint vaoSky;
 GLuint vaoCube;
 
 int activeProgramIndex = 0;
 
 const double gravity = -0.0025;
+
+GLuint skyTexture;
 
 void cubeRand()
 {
@@ -151,6 +174,8 @@ struct Bunny
     double velocityY = 0;
     double velocityZ = 0;
 
+    float angle = 0;
+
     const double jumpVelocity = 0.05;
 
     vector<Vertex> gVertices;
@@ -165,7 +190,6 @@ struct Bunny
 };
 Bunny bunny;
 
-// Assuming you have the same structures (Vertex, Texture, Normal, Face) as in your Bunny class
 struct Quad {
     vector<Vertex> gVertices;
     vector<Texture> gTextures;
@@ -176,19 +200,30 @@ struct Quad {
     GLint gInVertexLoc, gInNormalLoc;
     int gVertexDataSizeInBytes, gNormalDataSizeInBytes;
 };
-Quad  quad;
+Quad quad;
+Quad sky;
+
 struct Cube{
     vector<Vertex> gVertices;
     vector<Texture> gTextures;
     vector<Normal> gNormals;
     vector<Face> gFaces;
 
+    glm::vec3 color;
+
+    double positionX = 0;
+    double positionY = 0;
+    double positionZ = 0;
+
+
     GLuint gVertexAttribBuffer, gIndexBuffer;
     GLint gInVertexLoc, gInNormalLoc;
     int gVertexDataSizeInBytes, gNormalDataSizeInBytes;
 };
+
 Cube cube;
-Cube cubeClones[5];
+Cube cubeClones[3];
+
 bool ParseQuad (const string& fileName) {
     fstream myfile;
 
@@ -214,14 +249,17 @@ bool ParseQuad (const string& fileName) {
                         str >> tmp; // consume "vt"
                         str >> c1 >> c2;
                         quad.gTextures.push_back(Texture(c1, c2));
+                        sky.gTextures.push_back(Texture(c1, c2));
                     } else if (curLine[1] == 'n') { // Normal vector
                         str >> tmp; // consume "vn"
                         str >> c1 >> c2 >> c3;
                         quad.gNormals.push_back(Normal(c1, c2, c3));
+                        sky.gNormals.push_back(Normal(c1, c2, c3));
                     } else { // Vertex position
                         str >> tmp; // consume "v"
                         str >> c1 >> c2 >> c3;
                         quad.gVertices.push_back(Vertex(c1, c2, c3));
+                        sky.gVertices.push_back(Vertex(c1, c2, c3));
                     }
                 }
                     // Process face data
@@ -254,6 +292,7 @@ bool ParseQuad (const string& fileName) {
 
                     // Add the face data
                     quad.gFaces.push_back(Face(vIndex, tIndex, nIndex));
+                    sky.gFaces.push_back(Face(vIndex, tIndex, nIndex));
                 } else {
                     // Ignore lines that are not vertex, texture, normal, or face definitions
                     cout << "Ignoring unidentified line in obj file: " << curLine << endl;
@@ -266,7 +305,7 @@ bool ParseQuad (const string& fileName) {
         return false; // Return false if file couldn't be opened
     }
     assert(quad.gVertices.size() == quad.gNormals.size());
-
+    assert(sky.gVertices.size() == sky.gNormals.size());
     return true;
 }
 
@@ -476,6 +515,25 @@ bool ReadDataFromFile(const string& fileName, string& data)     ///< [out] The c
     return true;
 }
 
+void loadSkyTexture(const std::string& img_name) {
+    int width, height, nrChannels;
+    unsigned char* data = stbi_load(img_name.c_str(), &width, &height, &nrChannels, 0);
+    if (!data) {
+        std::cerr << "Failed to load texture" << std::endl;
+        return;
+    }
+
+    glGenTextures(1, &skyTexture);
+    glBindTexture(GL_TEXTURE_2D, skyTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    stbi_image_free(data);
+}
 
 // Function to create and compile a vertex shader
 GLuint createVS(const char* shaderName)
@@ -602,6 +660,30 @@ void initShaders()
     offsetLocation = glGetUniformLocation(groundProgram, "offset");
     color1Location = glGetUniformLocation(groundProgram, "color1");
     color2Location = glGetUniformLocation(groundProgram, "color2");
+    assert(glGetError() == GL_NONE);
+    //sky
+    skyProgram = glCreateProgram();
+    GLuint skyVS = createVS("skyVert.glsl");
+    GLuint skyFS = createFS("skyFrag.glsl");
+    assert(glGetError() == GL_NONE);
+    glAttachShader(skyProgram, skyVS);
+    glAttachShader(skyProgram, skyFS);
+    assert(glGetError() == GL_NONE);
+    glLinkProgram(skyProgram);
+    glGetProgramiv(skyProgram, GL_LINK_STATUS, &status);
+
+    if (status != GL_TRUE)
+    {
+        cout << "Sky program link failed" << endl;
+        exit(-1);
+    }
+    skyModelingMatrixLoc = glGetUniformLocation(skyProgram, "modelingMatrix");
+    skyViewingMatrixLoc = glGetUniformLocation(skyProgram, "viewingMatrix");
+    skyProjectionMatrixLoc = glGetUniformLocation(skyProgram, "projectionMatrix");
+    skyEyePosLoc = glGetUniformLocation(skyProgram, "eyePos");
+    skyTextureLocation = glGetUniformLocation(skyProgram, "texture1");
+
+
     //now for cube
     cubeProgram = glCreateProgram();
     GLuint cubeVS = createVS("cubeVert.glsl");
@@ -743,7 +825,52 @@ void initVBO()
     delete[] indexDataG;
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(quad.gVertexDataSizeInBytes));
- 
+
+    //NOW SAME FOR SKY
+    glGenVertexArrays(1, &vaoSky);
+    assert(vaoSky > 0);
+    glBindVertexArray(vaoSky);
+    cout << "vaoSky = " << vaoSky << endl;
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    assert(glGetError() == GL_NONE);
+    glGenBuffers(1, &sky.gVertexAttribBuffer);
+    glGenBuffers(1, &sky.gIndexBuffer);
+    assert(sky.gVertexAttribBuffer > 0 && sky.gIndexBuffer > 0);
+    glBindBuffer(GL_ARRAY_BUFFER, sky.gVertexAttribBuffer);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,  sky.gIndexBuffer);
+    sky.gVertexDataSizeInBytes =  sky.gVertices.size() * 3 * sizeof(GLfloat);
+    sky.gNormalDataSizeInBytes =  sky.gNormals.size() * 3 * sizeof(GLfloat);
+    int indexDataSizeInBytesS =  sky.gFaces.size() * 3 * sizeof(GLuint);
+    GLfloat* vertexDataS = new GLfloat[ sky.gVertices.size() * 3];
+    GLfloat* normalDataS = new GLfloat[ sky.gNormals.size() * 3];
+    GLuint* indexDataS = new GLuint[ sky.gFaces.size() * 3];
+    for(int i = 0; i < sky.gVertices.size(); ++i) {
+        vertexDataS[3 * i] = sky.gVertices[i].x;
+        vertexDataS[3 * i + 1] = sky.gVertices[i].y;
+        vertexDataS[3 * i + 2] = sky.gVertices[i].z;
+    }
+    for(int i = 0; i < sky.gNormals.size(); ++i) {
+        normalDataS[3 * i] = sky.gNormals[i].x;
+        normalDataS[3 * i + 1] = sky.gNormals[i].y;
+        normalDataS[3 * i + 2] = sky.gNormals[i].z;
+    }
+    for(int i = 0; i < sky.gFaces.size(); ++i) {
+        indexDataS[3 * i] = sky.gFaces[i].vIndex[0];
+        indexDataS[3 * i + 1] = sky.gFaces[i].vIndex[1];
+        indexDataS[3 * i + 2] = sky.gFaces[i].vIndex[2];
+    }
+    glBufferData(GL_ARRAY_BUFFER, sky.gVertexDataSizeInBytes + sky.gNormalDataSizeInBytes, 0, GL_STATIC_DRAW);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sky.gVertexDataSizeInBytes, vertexDataS);
+    glBufferSubData(GL_ARRAY_BUFFER, sky.gVertexDataSizeInBytes, sky.gNormalDataSizeInBytes, normalDataS);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER,indexDataSizeInBytesS, indexDataS, GL_STATIC_DRAW);
+    // done copying to GPU memory; can free now from CPU memory
+    delete[] vertexDataS;
+    delete[] normalDataS;
+    delete[] indexDataS;
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(sky.gVertexDataSizeInBytes));
+
     //NOW SAME FOR CUBE
     glGenVertexArrays(1, &vaoCube);
     assert(vaoCube > 0);
@@ -795,6 +922,7 @@ void init()
     ParseObj("hw3_support_files/bunny.obj");
     ParseQuad("hw3_support_files/quad.obj");
     ParseCube("hw3_support_files/cube.obj");
+    loadSkyTexture("hw3_support_files/sky.jpg");
     std::cout << cube.gVertices.size() << std::endl;
     std::cout << cube.gNormals.size() << std::endl;
     std::cout << cube.gFaces.size() << std::endl;
@@ -837,6 +965,21 @@ void drawGroundModel()
     glBindVertexArray(0);
 }
 
+void drawSkyModel()
+{
+    glDepthMask(GL_FALSE);  // Disable depth write
+
+    glActiveTexture(GL_TEXTURE0); // Activate texture unit 0
+    glBindTexture(GL_TEXTURE_2D, skyTexture);
+    glUniform1i(skyTextureLocation, 0); // The 0 here corresponds to GL_TEXTURE0
+
+    glBindVertexArray(vaoSky);
+    glDrawElements(GL_TRIANGLES, sky.gFaces.size() * 3, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+
+    glDepthMask(GL_TRUE);   // Re-enable depth write
+}
+
 
 void bunnyJump()
 {
@@ -850,17 +993,90 @@ void bunnyJump()
     }
 }
 
+void bunnyRight()
+{
+    if(bunny.positionX >= 1)
+    {
+        return;
+    }
+    bunny.positionX += 1.0;
+}
+
+void bunnyLeft()
+{
+    if(bunny.positionX <= -1)
+    {
+        return;
+    }
+    bunny.positionX -= 1.0;
+}
+
+void bunnyFall()
+{
+    bunny.angle = -90;
+}
+
+void killBunny()
+{
+    bunnyFall();
+    pause = true;
+    std::cout << "dead bunny"<< std::endl;
+}
+void checkCollision()
+{
+    float collisionThresholdZ = 5.0;
+    if(bunny.positionX == -1.0)
+    {
+        //cube0
+        if(abs(cubeClones[0].positionZ) - abs(bunny.positionZ) < collisionThresholdZ)
+        {
+            if(cubeClones[0].color == red)
+            {
+                killBunny();
+            }
+
+        }
+    }
+
+    else if(bunny.positionX == 1.0)
+    {
+        //cube2
+        if(abs(cubeClones[2].positionZ) - abs(bunny.positionZ) < collisionThresholdZ)
+        {
+            if(cubeClones[2].color == red)
+            {
+                killBunny();
+            }
+        }
+    }
+
+    else
+    {
+        if(abs(cubeClones[1].positionZ) - abs(bunny.positionZ) < collisionThresholdZ)
+        {
+            if(cubeClones[1].color == red)
+            {
+                killBunny();
+            }
+        }
+
+    }
+}
+
+
+
 void displayBunny() {
     static float angle = 0;   // Static angle variable to keep track of rotation
     bunnyJump();
     // Convert angle to radians for rotation
-    float angleRad = (float)(angle / 180.0) * M_PI;
+    float angleRad = (float)(bunny.angle / 180.0) * M_PI;
     // Compute the modeling matrix (transformation matrix for the object)
-    glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(0.f, -1.0, 2.8)); // Translation
-    glm::mat4 matThop = glm::translate(glm::mat4(1.0), glm::vec3(0.f, bunny.positionY, -4.0)); //bunny hop
+    bunny.positionZ = -1.2;
+    glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(bunny.positionX, -1.0, bunny.positionZ)); // Translation
+    glm::mat4 matThop = glm::translate(glm::mat4(1.0), glm::vec3(0.f, bunny.positionY, 0.0)); //bunny hop
     glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(0.15, 0.15, 0.15));      // Scaling
     glm::mat4 matR = glm::rotate<float>(glm::mat4(1.0), (-90. / 180.) * M_PI, glm::vec3(0.0, 1.0, 0.0)); // Rotation around Y
-    //glm::mat4 matRz = glm::rotate(glm::mat4(1.0), angleRad, glm::vec3(0.0, 0.0, 1.0)); // Rotation around Z
+    glm::mat4 matRz = glm::rotate(glm::mat4(1.0), angleRad, glm::vec3(0.0, 0.0, 1.0)); // Rotation around Z
     //Translatipn -> Rotation -> Scaling
     modelingMatrix = matT* matThop * matR *matS ; // Combine transformations
     /*  */
@@ -914,11 +1130,34 @@ void displayQuad(){
 	//angle += 0.9;
 }
 
-void drawCube(){
+//that does not work :d
+void displaySky(){
+    float angleRad = (float)(10 / 180.0) * M_PI;
+
+    // Compute the modeling matrix
+    glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(0.f, 0.f, -20.f));
+    glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(100.0, 100.0, 100.0));
+    glm::mat4 matR = glm::rotate<float>(glm::mat4(1.0), (90. / 180.) * M_PI, glm::vec3(1.0, 0.0, 0.0));
+    glm::mat4 matRz = glm::rotate(glm::mat4(1.0), angleRad, glm::vec3(1.0, 0.0, 0.0));
+    skyModelingMatrix = matT * matS * matR * matRz; // starting from right side, rotate around Y to turn b
+
+    glUseProgram(skyProgram);
+
+    glUniformMatrix4fv(skyProjectionMatrixLoc, 1, GL_FALSE, glm::value_ptr(projectionMatrix));
+    glUniformMatrix4fv(skyViewingMatrixLoc, 1, GL_FALSE, glm::value_ptr(viewingMatrix));
+    glUniformMatrix4fv(skyModelingMatrixLoc, 1, GL_FALSE, glm::value_ptr(skyModelingMatrix));
+    glUniform3fv(skyEyePosLoc, 1, glm::value_ptr(eyePos));
+
+    drawSkyModel();
+}
+
+void drawCube()
+{
     glDrawElements(GL_TRIANGLES, cube.gFaces.size() * 3, GL_UNSIGNED_INT, 0);
 }
 
-void displayCube(){
+void displayCube()
+{
     float angleRad = (float)(10 / 180.0) * M_PI;
     glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(5, -2.f, -100.f));
 	glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(.5, 5.0,0.3));
@@ -927,14 +1166,27 @@ void displayCube(){
 
 	cubeModelingMatrix = matT * matS ; // starting from right side, rotate around Y to turn back, then rotate around Z some more at each frame, then translate.
     for(int i =0 ; i<3 ; i++){
+
         cubeModelingMatrix = glm::translate(cubeModelingMatrix, glm::vec3(-5.f, 0.f, 0.f));
+        cubeClones[i].positionX = cubeModelingMatrix[0].x;
+        cubeClones[i].positionY = cubeModelingMatrix[1].y;
+        cubeClones[i].positionZ = -100 + Coffset.z;
+
+        std::cout << cubeClones[i].positionX << std::endl;
+        std::cout << cubeClones[i].positionY << std::endl;
+        std::cout << cubeClones[i].positionZ << std::endl;
+
         if(colorRandomizer[i] == 0){
             //red
-            glUniform3f(cubeColor1Location, 1.f,0.f,0.1f);
+
+            glUniform3f(cubeColor1Location, red.x, red.y, red.z);
+            cubeClones[i].color = red;
         }
         else{
             //make it yellow
-            glUniform3f(cubeColor1Location, 1.f,1.f,0.1f);
+
+            glUniform3f(cubeColor1Location, yellow.x,yellow.y,yellow.z);
+            cubeClones[i].color = yellow;
         }
         glUniform3f(cubeLightPosLocation, 5.f,5.f,5.f);
         glUniform3f(cubeLightColorLocation, 1.f,1.f,1.f);
@@ -958,16 +1210,23 @@ void displayCube(){
 
 void display()
 {
-    glClearColor(0, 0, 0, 1);
-	glClearDepth(1.0f);
-	glClearStencil(0);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-    displayBunny();
-    displayQuad();
-    glUseProgram(cubeProgram);
-    glBindVertexArray(vaoCube);
-    displayCube();
-    glBindVertexArray(0);
+    if(!pause)
+    {
+        glClearColor(0, 0, 0, 1);
+        glClearDepth(1.0f);
+        glClearStencil(0);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+        displaySky();
+        displayBunny();
+        displayQuad();
+        glUseProgram(cubeProgram);
+        glBindVertexArray(vaoCube);
+        displayCube();
+        checkCollision();
+
+        glBindVertexArray(0);
+    }
 }
 
 void reshape(GLFWwindow* window, int w, int h)
@@ -996,16 +1255,17 @@ void keyboard(GLFWwindow* window, int key, int scancode, int action, int mods)
     {
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     }
-    else if (key == GLFW_KEY_G && action == GLFW_PRESS)
+    else if (key == GLFW_KEY_D && action == GLFW_PRESS)
     {
-        activeProgramIndex = 0;
+        bunnyRight();
     }
-    else if (key == GLFW_KEY_P && action == GLFW_PRESS)
+    else if (key == GLFW_KEY_A && action == GLFW_PRESS)
     {
-        activeProgramIndex = 1;
+        bunnyLeft();
     }
-    else if (key == GLFW_KEY_F && action == GLFW_PRESS)
+    else if (key == GLFW_KEY_R && action == GLFW_PRESS)
     {
+        //restart();
         glShadeModel(GL_FLAT);
     }
     else if (key == GLFW_KEY_S && action == GLFW_PRESS)
