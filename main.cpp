@@ -834,9 +834,16 @@ void initVBO()
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
     assert(glGetError() == GL_NONE);
+    GLuint skyTextureBuffer;
     glGenBuffers(1, &sky.gVertexAttribBuffer);
     glGenBuffers(1, &sky.gIndexBuffer);
+    glGenBuffers(1, &skyTextureBuffer);
+
     assert(sky.gVertexAttribBuffer > 0 && sky.gIndexBuffer > 0);
+    glBindBuffer(GL_ARRAY_BUFFER, skyTextureBuffer);
+    glBufferData(GL_ARRAY_BUFFER, sky.gTextures.size() * sizeof(Texture), sky.gTextures.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Texture), (void*)0);
+    glEnableVertexAttribArray(2);
     glBindBuffer(GL_ARRAY_BUFFER, sky.gVertexAttribBuffer);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,  sky.gIndexBuffer);
     sky.gVertexDataSizeInBytes =  sky.gVertices.size() * 3 * sizeof(GLfloat);
@@ -1019,7 +1026,7 @@ void bunnyFall()
 void killBunny()
 {
     bunnyFall();
-    pause = true;
+    //pause = true;
     std::cout << "dead bunny"<< std::endl;
 }
 void checkCollision()
@@ -1130,16 +1137,15 @@ void displayQuad(){
 	//angle += 0.9;
 }
 
-//that does not work :d
 void displaySky(){
-    float angleRad = (float)(10 / 180.0) * M_PI;
+    float angleRad = (float)(90 / 180.0) * M_PI;
 
     // Compute the modeling matrix
-    glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(0.f, 0.f, -20.f));
-    glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(100.0, 100.0, 100.0));
+    glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(0.f, 0.f, -1.f));
+    glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(2.0, 1.0, 1.0));
     glm::mat4 matR = glm::rotate<float>(glm::mat4(1.0), (90. / 180.) * M_PI, glm::vec3(1.0, 0.0, 0.0));
     glm::mat4 matRz = glm::rotate(glm::mat4(1.0), angleRad, glm::vec3(1.0, 0.0, 0.0));
-    skyModelingMatrix = matT * matS * matR * matRz; // starting from right side, rotate around Y to turn b
+    skyModelingMatrix = matT * matS; // starting from right side, rotate around Y to turn b
 
     glUseProgram(skyProgram);
 
