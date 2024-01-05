@@ -1312,6 +1312,11 @@ void restart(){
     bunny.positionX = 0;
     bunny.positionY = 0;
     bunny.velocityY = 0;
+    finished= false;
+    pause = false;
+    happy = false;
+    faint = false;
+    gameSpeed = 0.2;
     offset.z = 0;
     Coffset.z = 0;
     cubeRand();
