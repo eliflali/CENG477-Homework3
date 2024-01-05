@@ -94,7 +94,7 @@ glm::mat4 cubeProjectionMatrix;
 glm::mat4 cubeViewingMatrix;
 glm::mat4 cubeModelingMatrix;
 
-bool pause = false;
+
 
 GLuint vao;
 GLuint vaoG;
@@ -103,7 +103,19 @@ GLuint vaoCube;
 
 int activeProgramIndex = 0;
 
+const double moveSpeed = 0.05;
 const double gravity = -0.0025;
+
+bool pause = false;
+bool moveLeft = false, moveRight = false;
+bool happy = false, faint = false;
+bool finished = false;
+
+bool restartState = false;
+double score  = 0;
+
+float gameSpeed = 0.2;
+float gameAcceleration = 0;
 
 GLuint skyTexture;
 
@@ -170,11 +182,13 @@ struct Bunny
     double positionY = 0;
     double positionZ = 0;
 
-    double velocityX = 0;
+    double velocityX = moveSpeed;;
     double velocityY = 0;
     double velocityZ = 0;
 
-    float angle = 0;
+    float angleX = 0;
+    float angleY = 0;
+    float angleZ = 0;
 
     const double jumpVelocity = 0.05;
 
@@ -955,12 +969,6 @@ void init()
 
 void drawBunnyModel()
 {
-    //glBindBuffer(GL_ARRAY_BUFFER, gVertexAttribBuffer);
-    //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gIndexBuffer);
-
-    //glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
-    //glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(bunny.gVertexDataSizeInBytes));
-    //initBunnyVBO();
     glBindVertexArray(vao);
     glDrawElements(GL_TRIANGLES, bunny.gFaces.size() * 3, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
@@ -999,34 +1007,39 @@ void bunnyJump()
         bunny.velocityY = bunny.jumpVelocity;
     }
 }
-
-void bunnyRight()
+void bunnymove(int direction)
 {
-    if(bunny.positionX >= 1)
-    {
-        return;
+    bunny.positionX += bunny.velocityX*direction;
+}
+void bunnycheck(bool press, int direction)
+{
+    if(press){
+        if(direction > 0 ){
+            bunnymove(1);
+        }
+        else if(direction < 0){
+            bunnymove(-1);
+        }
+        else{
+            bunnymove(0);
+        }
     }
-    bunny.positionX += 1.0;
+
 }
 
-void bunnyLeft()
-{
-    if(bunny.positionX <= -1)
-    {
-        return;
-    }
-    bunny.positionX -= 1.0;
-}
 
 void bunnyFall()
 {
-    bunny.angle = -90;
-}
 
+}
+void happyBunny()
+{
+    happy = true;
+}
 void killBunny()
 {
-    bunnyFall();
-    //pause = true;
+    faint = true;
+    pause = true;
     std::cout << "dead bunny"<< std::endl;
 }
 void checkCollision()
@@ -1075,17 +1088,62 @@ void checkCollision()
 void displayBunny() {
     static float angle = 0;   // Static angle variable to keep track of rotation
     bunnyJump();
-    // Convert angle to radians for rotation
-    float angleRad = (float)(bunny.angle / 180.0) * M_PI;
+    // Convert angle to radians for rotat
+    bunnycheck(moveLeft,-1);
+    bunnycheck(moveRight,1);
+
     // Compute the modeling matrix (transformation matrix for the object)
-    bunny.positionZ = -1.2;
-    glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(bunny.positionX, -1.0, bunny.positionZ)); // Translation
-    glm::mat4 matThop = glm::translate(glm::mat4(1.0), glm::vec3(0.f, bunny.positionY, 0.0)); //bunny hop
-    glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(0.15, 0.15, 0.15));      // Scaling
     glm::mat4 matR = glm::rotate<float>(glm::mat4(1.0), (-90. / 180.) * M_PI, glm::vec3(0.0, 1.0, 0.0)); // Rotation around Y
-    glm::mat4 matRz = glm::rotate(glm::mat4(1.0), angleRad, glm::vec3(0.0, 0.0, 1.0)); // Rotation around Z
-    //Translatipn -> Rotation -> Scaling
-    modelingMatrix = matT* matThop * matR *matS ; // Combine transformations
+    if(faint)
+    {
+        bunny.angleX += 1;
+        std::cout<<"fallen"<<std::endl;
+        std::cout<<bunny.angleX<<std::endl;
+        float faintAngleRad = (float)(bunny.angleX / 180.0) * M_PI;
+        glm::mat4 matRfaint = glm::rotate(glm::mat4(1.0), faintAngleRad, glm::vec3(1.0, 0.0, 0.0)); // Rotation around X
+        matR = matR * matRfaint;
+        glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(0.f, -1.0, 2.8)); // Translation
+        glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(0.15, 0.15, 0.15));      // Scaling
+        //Translatipn -> Rotation -> Scaling
+        modelingMatrix = matT* matR*matS ; // Combine transformations
+        if (bunny.angleX >= 90)
+        {
+            faint = false;
+            bunny.angleX = 0;
+            std::cout<<"finish"<<std::endl;
+            //finished = true;
+        }
+
+    }
+
+    else if(happy)
+    {
+        bunny.angleY += 30 * gameSpeed;
+        float happyAngleRad = (float)(bunny.angleY / 180.0) * M_PI;
+        glm::mat4 matRhappy = glm::rotate(glm::mat4(1.0), happyAngleRad, glm::vec3(0.0, 1.0, 0.0)); // Rotation around Y
+        matR = matR * matRhappy;
+        if(bunny.angleY>=360)
+        {
+            happy = false;
+            bunny.angleY = 0;
+        }
+
+        glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(0.f, -1.0, 2.8)); // Translation
+        glm::mat4 matMove = glm::translate(glm::mat4(1.0), glm::vec3(bunny.positionX, 0.0, 0.0)); //bunny move
+        glm::mat4 matThop = glm::translate(glm::mat4(1.0), glm::vec3(0.f, bunny.positionY, -4.0)); //bunny hop
+        glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(0.15, 0.15, 0.15));      // Scaling
+        //Translatipn -> Rotation -> Scaling
+        modelingMatrix = matT* matMove *  matThop * matR*matS ; // Combine transformations
+    }
+    else
+    {
+        glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(0.f, -1.0, 2.8)); // Translation
+        glm::mat4 matMove = glm::translate(glm::mat4(1.0), glm::vec3(bunny.positionX, 0.0, 0.0)); //bunny move
+        glm::mat4 matThop = glm::translate(glm::mat4(1.0), glm::vec3(0.f, bunny.positionY, -4.0)); //bunny hop
+        glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(0.15, 0.15, 0.15));      // Scaling
+        //Translatipn -> Rotation -> Scaling
+        modelingMatrix = matT* matMove *  matThop * matR*matS ; // Combine transformations
+    }
     /*  */
     // Set the active shader program and update its uniform variables
     glUseProgram(gProgram[activeProgramIndex]);
@@ -1096,14 +1154,14 @@ void displayBunny() {
     // Draw the model
     drawBunnyModel();
     // Update the angle for the next frame
-    angle += 0.9;
 }
+
 void displayQuad(){
 
 	float angleRad = (float)(10 / 180.0) * M_PI;
    
 	// Compute the modeling matrix 
-	glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(0.f, -2.f, -2.f));
+	glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(0.f, -2.f, -4.f));
 	glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(3.0, 1.0, 1000.0));
 	glm::mat4 matR = glm::rotate<float>(glm::mat4(1.0), (-180. / 180.) * M_PI, glm::vec3(1.0, 0.0, 0.0));
 	glm::mat4 matRz = glm::rotate(glm::mat4(1.0), angleRad, glm::vec3(1.0, 0.0, 0.0));
@@ -1132,7 +1190,8 @@ void displayQuad(){
 	// Draw the scene
 
 	drawGroundModel();
-    offset.z -= 0.5;
+    offset.z -= gameSpeed;
+    gameSpeed += gameAcceleration;
 
 	//angle += 0.9;
 }
@@ -1162,37 +1221,23 @@ void drawCube()
     glDrawElements(GL_TRIANGLES, cube.gFaces.size() * 3, GL_UNSIGNED_INT, 0);
 }
 
-void displayCube()
-{
+void displayCube(){
     float angleRad = (float)(10 / 180.0) * M_PI;
     glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(5, -2.f, -100.f));
-	glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(.5, 5.0,0.3));
-	glm::mat4 matR = glm::rotate<float>(glm::mat4(1.0), (-180. / 180.) * M_PI, glm::vec3(1.0, 0.0, 0.0));
-	glm::mat4 matRz = glm::rotate(glm::mat4(1.0), angleRad, glm::vec3(1.0, 0.0, 0.0));
+    glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(.5, 5.0,0.3));
+    glm::mat4 matR = glm::rotate<float>(glm::mat4(1.0), (-180. / 180.) * M_PI, glm::vec3(1.0, 0.0, 0.0));
+    glm::mat4 matRz = glm::rotate(glm::mat4(1.0), angleRad, glm::vec3(1.0, 0.0, 0.0));
 
-	cubeModelingMatrix = matT * matS ; // starting from right side, rotate around Y to turn back, then rotate around Z some more at each frame, then translate.
+    cubeModelingMatrix = matT * matS ; // starting from right side, rotate around Y to turn back, then rotate around Z some more at each frame, then translate.
     for(int i =0 ; i<3 ; i++){
-
         cubeModelingMatrix = glm::translate(cubeModelingMatrix, glm::vec3(-5.f, 0.f, 0.f));
-        cubeClones[i].positionX = cubeModelingMatrix[0].x;
-        cubeClones[i].positionY = cubeModelingMatrix[1].y;
-        cubeClones[i].positionZ = -100 + Coffset.z;
-
-        std::cout << cubeClones[i].positionX << std::endl;
-        std::cout << cubeClones[i].positionY << std::endl;
-        std::cout << cubeClones[i].positionZ << std::endl;
-
         if(colorRandomizer[i] == 0){
             //red
-
-            glUniform3f(cubeColor1Location, red.x, red.y, red.z);
-            cubeClones[i].color = red;
+            glUniform3f(cubeColor1Location, 1.f,0.f,0.1f);
         }
         else{
             //make it yellow
-
-            glUniform3f(cubeColor1Location, yellow.x,yellow.y,yellow.z);
-            cubeClones[i].color = yellow;
+            glUniform3f(cubeColor1Location, 1.f,1.f,0.1f);
         }
         glUniform3f(cubeLightPosLocation, 5.f,5.f,5.f);
         glUniform3f(cubeLightColorLocation, 1.f,1.f,1.f);
@@ -1203,20 +1248,90 @@ void displayCube()
         glUniformMatrix4fv(cubeModelingMatrixLoc, 1, GL_FALSE, glm::value_ptr(cubeModelingMatrix));
         glUniform3fv(cubeEyePosLoc, 0.7, glm::value_ptr(eyePos));
         drawCube();
-        std::cout << Coffset.z << "offset cubess"<< std::endl;
         if(Coffset.z >= 97.2){
-            Coffset.z = -2 ;
-            cubeRand();
 
+/*             Coffset.z = -2 ;
+            cubeRand();
+ */        //this will handle if bunny and cube collide
+            if( bunny.positionX+0.14 >= 1.00 && bunny.positionX-0.14 <= 1.50){
+                if(colorRandomizer[0] == 0){
+                    //red
+                    killBunny();
+                    std::cout<<"redcollusion"<<std::endl;
+                    score  -= 420;
+                }
+                else{
+                    //yellow
+                    happyBunny();
+                    std::cout<<"yellowc"<<std::endl;
+                    score  += 2024;
+                }
+                Coffset.z = -2 ;
+                cubeRand();
+            }
+            else if(bunny.positionX+0.14 >= -0.25 && bunny.positionX-0.14 <= 0.25){
+                ///
+                if(colorRandomizer[1] == 0){
+                    killBunny();
+                    std::cout<<"redcollusion"<<std::endl;
+                    score  -= 420;
+                }
+                else{
+                    //yellow
+                    happyBunny();
+                    std::cout<<"yellowc"<<std::endl;
+                    score  += 2024;
+                }
+                Coffset.z = -2 ;
+                cubeRand();
+            }
+            else if(bunny.positionX+0.14 >= -1.50 && bunny.positionX-0.14 <= -1.00){
+                if(colorRandomizer[2] == 0){
+                    killBunny();
+                    std::cout<<"redcollusion"<<std::endl;
+                    score  -= 420;
+                }
+                else{
+                    //yellow
+                    happyBunny();
+                    std::cout<<"yellowc"<<std::endl;
+                    score  += 2024;
+                }
+                Coffset.z = -2 ;
+                cubeRand();
+            }
+            else{
+                if(Coffset.z >= 99){
+                    Coffset.z = -2 ;
+                    cubeRand();
+                }
+            }
         }
+
     }
-            Coffset.z += 0.5;
+    Coffset.z += gameSpeed;
 
 }
 
+void restart(){
+    score = 0;
+    bunny.positionX = 0;
+    bunny.positionY = 0;
+    bunny.velocityY = 0;
+    offset.z = 0;
+    Coffset.z = 0;
+    cubeRand();
+
+}
+
+
 void display()
 {
-    if(!pause)
+    if(restartState)
+    {
+        restart();
+    }
+    if(!finished)
     {
         glClearColor(0, 0, 0, 1);
         glClearDepth(1.0f);
@@ -1229,7 +1344,7 @@ void display()
         glUseProgram(cubeProgram);
         glBindVertexArray(vaoCube);
         displayCube();
-        checkCollision();
+        //checkCollision();
 
         glBindVertexArray(0);
     }
@@ -1261,17 +1376,16 @@ void keyboard(GLFWwindow* window, int key, int scancode, int action, int mods)
     {
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     }
-    else if (key == GLFW_KEY_D && action == GLFW_PRESS)
+    else if (key == GLFW_KEY_G && action == GLFW_PRESS)
     {
-        bunnyRight();
+        activeProgramIndex = 0;
     }
-    else if (key == GLFW_KEY_A && action == GLFW_PRESS)
+    else if (key == GLFW_KEY_P && action == GLFW_PRESS)
     {
-        bunnyLeft();
+        activeProgramIndex = 1;
     }
-    else if (key == GLFW_KEY_R && action == GLFW_PRESS)
+    else if (key == GLFW_KEY_F && action == GLFW_PRESS)
     {
-        //restart();
         glShadeModel(GL_FLAT);
     }
     else if (key == GLFW_KEY_S && action == GLFW_PRESS)
@@ -1286,6 +1400,25 @@ void keyboard(GLFWwindow* window, int key, int scancode, int action, int mods)
     {
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     }
+    else if (key == GLFW_KEY_A && action == GLFW_PRESS){
+        moveLeft = true;
+    }
+    else if (key == GLFW_KEY_A && action == GLFW_RELEASE){
+        moveLeft = false;
+    }
+    else if (key == GLFW_KEY_D && action == GLFW_PRESS){
+        moveRight = true;
+    }
+    else if (key == GLFW_KEY_D && action == GLFW_RELEASE){
+        moveRight = false;
+    }
+    else if ( key == GLFW_KEY_R && action == GLFW_PRESS){
+        restartState = true;
+    }
+    else if ( key == GLFW_KEY_R && action == GLFW_RELEASE){
+        restartState = false;
+    }
+
 }
 
 // Function to run the main rendering loop
