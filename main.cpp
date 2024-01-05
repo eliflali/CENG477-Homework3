@@ -998,14 +998,18 @@ void drawSkyModel()
 
 void bunnyJump()
 {
-    bunny.positionY += bunny.velocityY;
-    bunny.velocityY += gravity;
-
-    if(bunny.positionY  <= 0.0)
+    if(!pause)
     {
-        bunny.positionY  = 0.0;
-        bunny.velocityY = bunny.jumpVelocity;
+        bunny.positionY += bunny.velocityY;
+        bunny.velocityY += gravity;
+
+        if(bunny.positionY  <= 0.0)
+        {
+            bunny.positionY  = 0.0;
+            bunny.velocityY = bunny.jumpVelocity;
+        }
     }
+
 }
 void bunnymove(int direction)
 {
@@ -1028,10 +1032,6 @@ void bunnycheck(bool press, int direction)
 }
 
 
-void bunnyFall()
-{
-
-}
 void happyBunny()
 {
     happy = true;
@@ -1041,6 +1041,13 @@ void killBunny()
     faint = true;
     pause = true;
     std::cout << "dead bunny"<< std::endl;
+}
+void gameStop()
+{
+    gameSpeed = 0;
+
+    bunny.velocityX = 0;
+    bunny.velocityY = 0;
 }
 void checkCollision()
 {
@@ -1086,32 +1093,30 @@ void checkCollision()
 
 
 void displayBunny() {
-    static float angle = 0;   // Static angle variable to keep track of rotation
     bunnyJump();
-    // Convert angle to radians for rotat
     bunnycheck(moveLeft,-1);
     bunnycheck(moveRight,1);
 
     // Compute the modeling matrix (transformation matrix for the object)
     glm::mat4 matR = glm::rotate<float>(glm::mat4(1.0), (-90. / 180.) * M_PI, glm::vec3(0.0, 1.0, 0.0)); // Rotation around Y
+    glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(0.f, -1.0, 2.8)); // Translation
+    glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(0.15, 0.15, 0.15));      // Scaling
     if(faint)
     {
-        bunny.angleX += 1;
+        gameStop();
+        bunny.angleX += 5;
         std::cout<<"fallen"<<std::endl;
         std::cout<<bunny.angleX<<std::endl;
         float faintAngleRad = (float)(bunny.angleX / 180.0) * M_PI;
         glm::mat4 matRfaint = glm::rotate(glm::mat4(1.0), faintAngleRad, glm::vec3(1.0, 0.0, 0.0)); // Rotation around X
         matR = matR * matRfaint;
-        glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(0.f, -1.0, 2.8)); // Translation
-        glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(0.15, 0.15, 0.15));      // Scaling
-        //Translatipn -> Rotation -> Scaling
-        modelingMatrix = matT* matR*matS ; // Combine transformations
+
         if (bunny.angleX >= 90)
         {
             faint = false;
-            bunny.angleX = 0;
+            finished = true;
             std::cout<<"finish"<<std::endl;
-            //finished = true;
+
         }
 
     }
@@ -1127,23 +1132,13 @@ void displayBunny() {
             happy = false;
             bunny.angleY = 0;
         }
+    }
 
-        glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(0.f, -1.0, 2.8)); // Translation
-        glm::mat4 matMove = glm::translate(glm::mat4(1.0), glm::vec3(bunny.positionX, 0.0, 0.0)); //bunny move
-        glm::mat4 matThop = glm::translate(glm::mat4(1.0), glm::vec3(0.f, bunny.positionY, -4.0)); //bunny hop
-        glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(0.15, 0.15, 0.15));      // Scaling
-        //Translatipn -> Rotation -> Scaling
-        modelingMatrix = matT* matMove *  matThop * matR*matS ; // Combine transformations
-    }
-    else
-    {
-        glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(0.f, -1.0, 2.8)); // Translation
-        glm::mat4 matMove = glm::translate(glm::mat4(1.0), glm::vec3(bunny.positionX, 0.0, 0.0)); //bunny move
-        glm::mat4 matThop = glm::translate(glm::mat4(1.0), glm::vec3(0.f, bunny.positionY, -4.0)); //bunny hop
-        glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(0.15, 0.15, 0.15));      // Scaling
-        //Translatipn -> Rotation -> Scaling
-        modelingMatrix = matT* matMove *  matThop * matR*matS ; // Combine transformations
-    }
+    //Translation -> Rotation -> Scaling
+    glm::mat4 matMove = glm::translate(glm::mat4(1.0), glm::vec3(bunny.positionX, 0.0, 0.0)); //bunny move
+    glm::mat4 matThop = glm::translate(glm::mat4(1.0), glm::vec3(0.f, bunny.positionY, -4.0)); //bunny hop
+    matT = matT*matMove*matThop;
+    modelingMatrix = matT* matR * matS ; // Combine transformations
     /*  */
     // Set the active shader program and update its uniform variables
     glUseProgram(gProgram[activeProgramIndex]);
@@ -1153,7 +1148,6 @@ void displayBunny() {
     glUniform3fv(eyePosLoc[activeProgramIndex], 1, glm::value_ptr(eyePos));
     // Draw the model
     drawBunnyModel();
-    // Update the angle for the next frame
 }
 
 void displayQuad(){
