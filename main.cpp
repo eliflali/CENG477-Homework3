@@ -6,6 +6,7 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
+#include <map>
 #include <cmath>
 #include <GL/glew.h>
 //#include <OpenGL/gl3.h>   // The GL Header File
@@ -13,6 +14,8 @@
 #include <glm/glm.hpp> // GL Math library header
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <ft2build.h>
+#include FT_FREETYPE_H
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
@@ -24,6 +27,7 @@ using namespace std;
 GLuint gProgram[2];
 GLuint groundProgram;
 GLuint cubeProgram;
+GLuint textProgram;
 GLuint skyProgram;
 
 GLint modelingMatrixLoc[2];
@@ -42,27 +46,18 @@ GLint skyProjectionMatrixLoc;
 GLint skyEyePosLoc;
 GLint skyTextureLocation;
 
-
 GLint scaleLocation;
 GLint offsetLocation;
 GLint color1Location;
 GLint color2Location;
 
-
 glm::vec3 red(1.f,0.f,0.1f);
 glm::vec3 yellow(1.f,1.f,0.1f);
 
-
 int colorRandomizer[3];
+int width, height;
+double score  = 0;
 
-
-/*cubeModelingMatrixLoc = glGetUniformLocation(cubeProgram, "modelingMatrix");
-    cubeViewingMatrixLoc = glGetUniformLocation(cubeProgram, "viewingMatrix");
-    cubeProjectionMatrixLoc = glGetUniformLocation(cubeProgram, "projectionMatrix");
-    cubeEyePosLoc = glGetUniformLocation(cubeProgram, "eyePos");
-    cubeScaleLocation = glGetUniformLocation(cubeProgram, "scale");
-    cubeOffsetLocation = glGetUniformLocation(cubeProgram, "offset");
-    cubeColor1Location = glGetUniformLocation(cubeProgram, "color");*/
 GLint cubeModelingMatrixLoc;
 GLint cubeViewingMatrixLoc;
 GLint cubeProjectionMatrixLoc;
@@ -74,7 +69,7 @@ GLint cubeLightColorLocation;
 GLint cubeLightPosLocation;
 
 
-//BUNNY
+
 glm::mat4 projectionMatrix;
 glm::mat4 viewingMatrix;
 glm::mat4 modelingMatrix;
@@ -86,6 +81,7 @@ glm::mat4 groundProjectionMatrix;
 glm::mat4 groundViewingMatrix;
 glm::mat4 groundModelingMatrix;
 
+
 glm::mat4 skyProjectionMatrix;
 glm::mat4 skyViewingMatrix;
 glm::mat4 skyModelingMatrix;
@@ -95,16 +91,16 @@ glm::mat4 cubeViewingMatrix;
 glm::mat4 cubeModelingMatrix;
 
 
-
 GLuint vao;
 GLuint vaoG;
 GLuint vaoSky;
 GLuint vaoCube;
+GLuint gTextVBO;
 
 int activeProgramIndex = 0;
 
-const double moveSpeed = 0.05;
-const double gravity = -0.0025;
+double moveSpeed = 0.05;
+double gravity = -0.0025;
 
 bool pause = false;
 bool moveLeft = false, moveRight = false;
@@ -112,10 +108,12 @@ bool happy = false, faint = false;
 bool finished = false;
 
 bool restartState = false;
-double score  = 0;
 
-float gameSpeed = 0.2;
-float gameAcceleration = 0.001;
+int hittenCube = -1;
+bool hitten  = false;
+
+float gameSpeed = 0.20;
+float gameAcceleration = 0.000003;
 
 GLuint skyTexture;
 
@@ -134,6 +132,15 @@ void cubeRand()
         }
     }
 }
+
+struct Character {
+    GLuint TextureID;   // ID handle of the glyph texture
+    glm::ivec2 Size;    // Size of glyph
+    glm::ivec2 Bearing;  // Offset from baseline to left/top of glyph
+    GLuint Advance;    // Horizontal offset to advance to next glyph
+};
+
+map<GLchar, Character> Characters;
 
 struct Vertex
 {
@@ -182,7 +189,7 @@ struct Bunny
     double positionY = 0;
     double positionZ = 0;
 
-    double velocityX = moveSpeed;;
+    double velocityX = moveSpeed;
     double velocityY = 0;
     double velocityZ = 0;
 
@@ -204,6 +211,7 @@ struct Bunny
 };
 Bunny bunny;
 
+// Assuming you have the same structures (Vertex, Texture, Normal, Face) as in your Bunny class
 struct Quad {
     vector<Vertex> gVertices;
     vector<Texture> gTextures;
@@ -214,9 +222,8 @@ struct Quad {
     GLint gInVertexLoc, gInNormalLoc;
     int gVertexDataSizeInBytes, gNormalDataSizeInBytes;
 };
-Quad quad;
+Quad  quad;
 Quad sky;
-
 struct Cube{
     vector<Vertex> gVertices;
     vector<Texture> gTextures;
@@ -229,100 +236,11 @@ struct Cube{
     double positionY = 0;
     double positionZ = 0;
 
-
     GLuint gVertexAttribBuffer, gIndexBuffer;
     GLint gInVertexLoc, gInNormalLoc;
     int gVertexDataSizeInBytes, gNormalDataSizeInBytes;
 };
-
 Cube cube;
-Cube cubeClones[3];
-
-bool ParseQuad (const string& fileName) {
-    fstream myfile;
-
-    // Open the input file
-    myfile.open(fileName.c_str(), std::ios::in);
-
-    // Check if the file is successfully opened
-    if (myfile.is_open()) {
-        string curLine;
-
-        // Read the file line by line
-        while (getline(myfile, curLine)) {
-            stringstream str(curLine);
-            GLfloat c1, c2, c3;
-            GLuint index[9];
-            string tmp;
-
-            // Check if the line is non-empty
-            if (curLine.length() >= 2) {
-                // Process vertex data
-                if (curLine[0] == 'v') {
-                    if (curLine[1] == 't') { // Texture coordinate
-                        str >> tmp; // consume "vt"
-                        str >> c1 >> c2;
-                        quad.gTextures.push_back(Texture(c1, c2));
-                        sky.gTextures.push_back(Texture(c1, c2));
-                    } else if (curLine[1] == 'n') { // Normal vector
-                        str >> tmp; // consume "vn"
-                        str >> c1 >> c2 >> c3;
-                        quad.gNormals.push_back(Normal(c1, c2, c3));
-                        sky.gNormals.push_back(Normal(c1, c2, c3));
-                    } else { // Vertex position
-                        str >> tmp; // consume "v"
-                        str >> c1 >> c2 >> c3;
-                        quad.gVertices.push_back(Vertex(c1, c2, c3));
-                        sky.gVertices.push_back(Vertex(c1, c2, c3));
-                    }
-                }
-                    // Process face data
-                else if (curLine[0] == 'f') {
-                    str >> tmp; // consume "f"
-                    char c;
-                    int vIndex[3], nIndex[3], tIndex[3];
-                    // Parse indices of vertex/texture/normal for each vertex of the face
-                    str >> vIndex[0];
-                    str >> c >> c; // consume "//"
-                    str >> nIndex[0];
-                    str >> vIndex[1];
-                    str >> c >> c; // consume "//"
-                    str >> nIndex[1];
-                    str >> vIndex[2];
-                    str >> c >> c; // consume "//"
-                    str >> nIndex[2];
-
-                    // Assert to check that vertex and normal indices are matching
-                    assert(vIndex[0] == nIndex[0] &&
-                           vIndex[1] == nIndex[1] &&
-                           vIndex[2] == nIndex[2]); // a limitation for now
-
-                    // Adjust indices to be 0-based instead of 1-based
-                    for (int c = 0; c < 3; ++c) {
-                        vIndex[c] -= 1;
-                        nIndex[c] -= 1;
-                        tIndex[c] -= 1;
-                    }
-
-                    // Add the face data
-                    quad.gFaces.push_back(Face(vIndex, tIndex, nIndex));
-                    sky.gFaces.push_back(Face(vIndex, tIndex, nIndex));
-                } else {
-                    // Ignore lines that are not vertex, texture, normal, or face definitions
-                    cout << "Ignoring unidentified line in obj file: " << curLine << endl;
-                }
-            }
-        }
-
-        myfile.close();
-    } else {
-        return false; // Return false if file couldn't be opened
-    }
-    assert(quad.gVertices.size() == quad.gNormals.size());
-    assert(sky.gVertices.size() == sky.gNormals.size());
-    return true;
-}
-
 // Function to parse a Wavefront .obj file
 bool ParseObj(const string& fileName) {
     fstream myfile;
@@ -413,6 +331,55 @@ bool ParseObj(const string& fileName) {
 
     return true; // Return true if parsing was successful
 }
+
+void renderText(const std::string& text, GLfloat x, GLfloat y, GLfloat scale, glm::vec3 color)
+{
+    // Activate corresponding render state	
+    glUseProgram(textProgram);
+    glUniform3f(glGetUniformLocation(textProgram, "textColor"), color.x, color.y, color.z);
+    glActiveTexture(GL_TEXTURE0);
+
+    // Iterate through all characters
+    std::string::const_iterator c;
+    for (c = text.begin(); c != text.end(); c++) 
+    {
+        Character ch = Characters[*c];
+
+        GLfloat xpos = x + ch.Bearing.x * scale;
+        GLfloat ypos = y - (ch.Size.y - ch.Bearing.y) * scale;
+
+        GLfloat w = ch.Size.x * scale;
+        GLfloat h = ch.Size.y * scale;
+
+        // Update VBO for each character
+        GLfloat vertices[6][4] = {
+            { xpos,     ypos + h,   0.0, 0.0 },            
+            { xpos,     ypos,       0.0, 1.0 },
+            { xpos + w, ypos,       1.0, 1.0 },
+
+            { xpos,     ypos + h,   0.0, 0.0 },
+            { xpos + w, ypos,       1.0, 1.0 },
+            { xpos + w, ypos + h,   1.0, 0.0 }           
+        };
+
+        // Render glyph texture over quad
+        glBindTexture(GL_TEXTURE_2D, ch.TextureID);
+
+        // Update content of VBO memory
+        glBindBuffer(GL_ARRAY_BUFFER, gTextVBO);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices); // Be sure to use glBufferSubData and not glBufferData
+
+        //glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+        // Render quad
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        // Now advance cursors for next glyph (note that advance is number of 1/64 pixels)
+
+        x += (ch.Advance >> 6) * scale; // Bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
+    }
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
 bool ParseCube(const string& fileName){
     fstream myfile;
 
@@ -447,7 +414,8 @@ bool ParseCube(const string& fileName){
                     else { // Vertex position
                         str >> tmp; // consume "v"
                         str >> c1 >> c2 >> c3;
-                        cube.gVertices.push_back(Vertex(c1, c2, c3));
+                        cube.gVertices.push_back(Vertex(c1, c2, c3));                                                sky.gVertices.push_back(Vertex(c1, c2, c3));
+
                     }
                 }
                     // Process face data
@@ -501,7 +469,90 @@ bool ParseCube(const string& fileName){
 
     return true;
 }
+bool ParseQuad (const string& fileName) {
+    fstream myfile;
 
+    // Open the input file
+    myfile.open(fileName.c_str(), std::ios::in);
+
+    // Check if the file is successfully opened
+    if (myfile.is_open()) {
+        string curLine;
+
+        // Read the file line by line
+        while (getline(myfile, curLine)) {
+            stringstream str(curLine);
+            GLfloat c1, c2, c3;
+            GLuint index[9];
+            string tmp;
+
+            // Check if the line is non-empty
+            if (curLine.length() >= 2) {
+                // Process vertex data
+                if (curLine[0] == 'v') {
+                    if (curLine[1] == 't') { // Texture coordinate
+                        str >> tmp; // consume "vt"
+                        str >> c1 >> c2;
+                        quad.gTextures.push_back(Texture(c1, c2));
+                        sky.gTextures.push_back(Texture(c1, c2));
+                    } else if (curLine[1] == 'n') { // Normal vector
+                        str >> tmp; // consume "vn"
+                        str >> c1 >> c2 >> c3;
+                        quad.gNormals.push_back(Normal(c1, c2, c3));
+                        sky.gNormals.push_back(Normal(c1, c2, c3));
+                    } else { // Vertex position
+                        str >> tmp; // consume "v"
+                        str >> c1 >> c2 >> c3;
+                        quad.gVertices.push_back(Vertex(c1, c2, c3));
+                        sky.gVertices.push_back(Vertex(c1, c2, c3));
+                    }
+                }
+                    // Process face data
+                else if (curLine[0] == 'f') {
+                    str >> tmp; // consume "f"
+                    char c;
+                    int vIndex[3], nIndex[3], tIndex[3];
+                    // Parse indices of vertex/texture/normal for each vertex of the face
+                    str >> vIndex[0];
+                    str >> c >> c; // consume "//"
+                    str >> nIndex[0];
+                    str >> vIndex[1];
+                    str >> c >> c; // consume "//"
+                    str >> nIndex[1];
+                    str >> vIndex[2];
+                    str >> c >> c; // consume "//"
+                    str >> nIndex[2];
+
+                    // Assert to check that vertex and normal indices are matching
+                    assert(vIndex[0] == nIndex[0] &&
+                           vIndex[1] == nIndex[1] &&
+                           vIndex[2] == nIndex[2]); // a limitation for now
+
+                    // Adjust indices to be 0-based instead of 1-based
+                    for (int c = 0; c < 3; ++c) {
+                        vIndex[c] -= 1;
+                        nIndex[c] -= 1;
+                        tIndex[c] -= 1;
+                    }
+
+                    // Add the face data
+                    quad.gFaces.push_back(Face(vIndex, tIndex, nIndex));
+                    sky.gFaces.push_back(Face(vIndex, tIndex, nIndex));
+                } else {
+                    // Ignore lines that are not vertex, texture, normal, or face definitions
+                    cout << "Ignoring unidentified line in obj file: " << curLine << endl;
+                }
+            }
+        }
+
+        myfile.close();
+    } else {
+        return false; // Return false if file couldn't be opened
+    }
+    assert(quad.gVertices.size() == quad.gNormals.size());
+    assert(sky.gVertices.size() == sky.gNormals.size());
+    return true;
+}
 bool ReadDataFromFile(const string& fileName, string& data)     ///< [out] The contents of the file
 {
     fstream myfile;
@@ -528,7 +579,6 @@ bool ReadDataFromFile(const string& fileName, string& data)     ///< [out] The c
     }
     return true;
 }
-
 void loadSkyTexture(const std::string& img_name) {
     int width, height, nrChannels;
     unsigned char* data = stbi_load(img_name.c_str(), &width, &height, &nrChannels, 0);
@@ -548,7 +598,6 @@ void loadSkyTexture(const std::string& img_name) {
 
     stbi_image_free(data);
 }
-
 // Function to create and compile a vertex shader
 GLuint createVS(const char* shaderName)
 {
@@ -674,8 +723,7 @@ void initShaders()
     offsetLocation = glGetUniformLocation(groundProgram, "offset");
     color1Location = glGetUniformLocation(groundProgram, "color1");
     color2Location = glGetUniformLocation(groundProgram, "color2");
-    assert(glGetError() == GL_NONE);
-    //sky
+    //
     skyProgram = glCreateProgram();
     GLuint skyVS = createVS("skyVert.glsl");
     GLuint skyFS = createFS("skyFrag.glsl");
@@ -697,6 +745,7 @@ void initShaders()
     skyEyePosLoc = glGetUniformLocation(skyProgram, "eyePos");
     skyTextureLocation = glGetUniformLocation(skyProgram, "texture1");
 
+    
 
     //now for cube
     cubeProgram = glCreateProgram();
@@ -720,6 +769,23 @@ void initShaders()
     cubeScaleLocation = glGetUniformLocation(cubeProgram, "scale");
     cubeOffsetLocation = glGetUniformLocation(cubeProgram, "offset");
     cubeLightColorLocation = glGetUniformLocation(cubeProgram, "lightColor");
+    //now for text
+    textProgram = glCreateProgram();
+    GLuint textVS = createVS("vert_text.glsl");
+    GLuint textFS = createFS("frag_text.glsl");
+    glBindAttribLocation(textProgram, 2, "vertex");
+    glAttachShader(textProgram, textVS);
+    glAttachShader(textProgram, textFS);
+    glLinkProgram(textProgram);
+    glGetProgramiv(textProgram, GL_LINK_STATUS, &status);
+    if (status != GL_TRUE)
+    {
+        cout << "Program link failed" << endl;
+        exit(-1);
+    }
+
+
+
 }
 
 void initVBO()
@@ -839,7 +905,6 @@ void initVBO()
     delete[] indexDataG;
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(quad.gVertexDataSizeInBytes));
-
     //NOW SAME FOR SKY
     glGenVertexArrays(1, &vaoSky);
     assert(vaoSky > 0);
@@ -892,6 +957,7 @@ void initVBO()
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(sky.gVertexDataSizeInBytes));
 
+    
     //NOW SAME FOR CUBE
     glGenVertexArrays(1, &vaoCube);
     assert(vaoCube > 0);
@@ -937,6 +1003,146 @@ void initVBO()
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(cube.gVertexDataSizeInBytes));
 }
+
+void initFonts(int windowWidth, int windowHeight)
+{
+    // Set OpenGL options
+    //glEnable(GL_CULL_FACE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glm::mat4 projection = glm::ortho(0.0f, static_cast<GLfloat>(windowWidth), 0.0f, static_cast<GLfloat>(windowHeight));
+    glUseProgram(textProgram);
+    glUniformMatrix4fv(glGetUniformLocation(textProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+
+    // FreeType
+    FT_Library ft;
+    // All functions return a value different than 0 whenever an error occurred
+    if (FT_Init_FreeType(&ft))
+    {
+        std::cout << "ERROR::FREETYPE: Could not init FreeType Library" << std::endl;
+    }
+
+    // Load font as face
+    FT_Face face;
+    if (FT_New_Face(ft, "/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf", 0, &face))
+    {
+        std::cout << "ERROR::FREETYPE: Failed to load font" << std::endl;
+    }
+
+    // Set size to load glyphs as
+    FT_Set_Pixel_Sizes(face, 0, 48);
+
+    // Disable byte-alignment restriction
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1); 
+
+    // Load first 128 characters of ASCII set
+    for (GLubyte c = 0; c < 128; c++)
+    {
+        // Load character glyph 
+        if (FT_Load_Char(face, c, FT_LOAD_RENDER))
+        {
+            std::cout << "ERROR::FREETYTPE: Failed to load Glyph" << std::endl;
+            continue;
+        }
+        // Generate texture
+        GLuint texture;
+        glGenTextures(1, &texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexImage2D(
+                GL_TEXTURE_2D,
+                0,
+                GL_RED,
+                face->glyph->bitmap.width,
+                face->glyph->bitmap.rows,
+                0,
+                GL_RED,
+                GL_UNSIGNED_BYTE,
+                face->glyph->bitmap.buffer
+                );
+        // Set texture options
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        // Now store character for later use
+        Character character = {
+            texture,
+            glm::ivec2(face->glyph->bitmap.width, face->glyph->bitmap.rows),
+            glm::ivec2(face->glyph->bitmap_left, face->glyph->bitmap_top),
+            face->glyph->advance.x
+        };
+        Characters.insert(std::pair<GLchar, Character>(c, character));
+    }
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+    // Destroy FreeType once we're finished
+    FT_Done_Face(face);
+    FT_Done_FreeType(ft);
+
+    //
+    // Configure VBO for texture quads
+    //
+    glGenBuffers(1, &gTextVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, gTextVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 6 * 4, NULL, GL_DYNAMIC_DRAW);
+
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+void keyboard(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+    if (key == GLFW_KEY_Q && action == GLFW_PRESS)
+    {
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+    }
+    else if (key == GLFW_KEY_G && action == GLFW_PRESS)
+    {
+        activeProgramIndex = 0;
+    }
+    else if (key == GLFW_KEY_P && action == GLFW_PRESS)
+    {
+        activeProgramIndex = 1;
+    }
+    else if (key == GLFW_KEY_F && action == GLFW_PRESS)
+    {
+        glShadeModel(GL_FLAT);
+    }
+    else if (key == GLFW_KEY_S && action == GLFW_PRESS)
+    {
+        glShadeModel(GL_SMOOTH);
+    }
+    else if (key == GLFW_KEY_W && action == GLFW_PRESS)
+    {
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    }
+    else if (key == GLFW_KEY_E && action == GLFW_PRESS)
+    {
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    }
+    else if ( key == GLFW_KEY_A && action == GLFW_PRESS){
+        moveLeft = true;
+    }
+    else if (key == GLFW_KEY_A && action == GLFW_RELEASE){
+        moveLeft = false;
+    }
+    else if (key == GLFW_KEY_D && action == GLFW_PRESS){
+        moveRight = true;
+    }
+    else if (key == GLFW_KEY_D && action == GLFW_RELEASE){
+        moveRight = false;
+    }
+    else if ( key == GLFW_KEY_R && action == GLFW_PRESS){
+        restartState = true;
+    }
+    else if ( key == GLFW_KEY_R && action == GLFW_RELEASE){
+        restartState = false;
+    }
+}
+
 void init()
 {
     //ParseObj("armadillo.obj");
@@ -944,22 +1150,10 @@ void init()
     ParseQuad("hw3_support_files/quad.obj");
     ParseCube("hw3_support_files/cube.obj");
     loadSkyTexture("hw3_support_files/sky.jpg");
-    std::cout << cube.gVertices.size() << std::endl;
-    std::cout << cube.gNormals.size() << std::endl;
-    std::cout << cube.gFaces.size() << std::endl;
-    std::cout << cube.gTextures.size() << std::endl;
-    std::cout << cube.gFaces[0].vIndex[0] << std::endl;
-    std::cout << cube.gVertexAttribBuffer << std::endl;
-    /* 
-    std::cout << quad.gNormals.size() << std::endl;
-    std::cout << quad.gVertices.size() << std::endl;
-    std::cout << quad.gFaces.size() << std::endl;
-    std::cout << quad.gTextures.size() << std::endl;
-    std::cout << quad.gFaces[0].vIndex[0] << std::endl;
-    std::cout << quad.gVertexAttribBuffer << std::endl; */
     glEnable(GL_DEPTH_TEST);
     initShaders();
     initVBO();
+    initFonts(width, height);
     cubeRand();
 
     std::cout << "bunny shader initialized" <<std::endl; 
@@ -969,6 +1163,7 @@ void init()
 
 void drawBunnyModel()
 {
+    
     glBindVertexArray(vao);
     glDrawElements(GL_TRIANGLES, bunny.gFaces.size() * 3, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
@@ -979,7 +1174,6 @@ void drawGroundModel()
     glDrawElements(GL_TRIANGLES, quad.gFaces.size() * 3, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
 }
-
 void drawSkyModel()
 {
     glDepthMask(GL_FALSE);  // Disable depth write
@@ -995,43 +1189,43 @@ void drawSkyModel()
     glDepthMask(GL_TRUE);   // Re-enable depth write
 }
 
-
 void bunnyJump()
 {
-    if(!pause)
-    {
+    if(!pause){
         bunny.positionY += bunny.velocityY;
         bunny.velocityY += gravity;
-
         if(bunny.positionY  <= 0.0)
         {
             bunny.positionY  = 0.0;
             bunny.velocityY = bunny.jumpVelocity;
         }
     }
-
 }
-void bunnymove(int direction)
-{
+void bunnymove(int direction){
     bunny.positionX += bunny.velocityX*direction;
+    if(bunny.positionX >= 1.37)
+    {
+        bunny.positionX = 1.37;
+    }
+    else if(bunny.positionX <= -1.37)
+    {
+        bunny.positionX = -1.37;
+    }
 }
-void bunnycheck(bool press, int direction)
-{
-    if(press){
-        if(direction > 0 ){
+void bunnycheck(bool press, int direction){
+    if(press){  
+         if(direction > 0 ){
             bunnymove(1);
-        }
+         }
         else if(direction < 0){
-            bunnymove(-1);
-        }
-        else{
-            bunnymove(0);
-        }
+                bunnymove(-1);
+     }
+     else{
+        bunnymove(0);
+     }
     }
 
 }
-
-
 void happyBunny()
 {
     happy = true;
@@ -1045,63 +1239,22 @@ void killBunny()
 void gameStop()
 {
     gameSpeed = 0;
-
     bunny.velocityX = 0;
     bunny.velocityY = 0;
-}
-void checkCollision()
-{
-    float collisionThresholdZ = 5.0;
-    if(bunny.positionX == -1.0)
-    {
-        //cube0
-        if(abs(cubeClones[0].positionZ) - abs(bunny.positionZ) < collisionThresholdZ)
-        {
-            if(cubeClones[0].color == red)
-            {
-                killBunny();
-            }
-
-        }
-    }
-
-    else if(bunny.positionX == 1.0)
-    {
-        //cube2
-        if(abs(cubeClones[2].positionZ) - abs(bunny.positionZ) < collisionThresholdZ)
-        {
-            if(cubeClones[2].color == red)
-            {
-                killBunny();
-            }
-        }
-    }
-
-    else
-    {
-        if(abs(cubeClones[1].positionZ) - abs(bunny.positionZ) < collisionThresholdZ)
-        {
-            if(cubeClones[1].color == red)
-            {
-                killBunny();
-            }
-        }
-
-    }
-}
-
-
-
+    moveLeft = 0;
+    moveRight = 0;
+} 
 void displayBunny() {
+    
     bunnyJump();
-    bunnycheck(moveLeft,-1);
-    bunnycheck(moveRight,1);
+    bunnycheck(moveLeft,-1); // left -1
+    bunnycheck(moveRight,1); // right 1
 
     // Compute the modeling matrix (transformation matrix for the object)
     glm::mat4 matR = glm::rotate<float>(glm::mat4(1.0), (-90. / 180.) * M_PI, glm::vec3(0.0, 1.0, 0.0)); // Rotation around Y
     glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(0.f, -1.0, 2.8)); // Translation
     glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(0.15, 0.15, 0.15));      // Scaling
-    if(faint)
+    if(faint || finished)
     {
         gameStop();
         bunny.angleX += 5;
@@ -1113,6 +1266,7 @@ void displayBunny() {
 
         if (bunny.angleX >= 90)
         {
+            bunny.angleX = 90;
             faint = false;
             finished = true;
             std::cout<<"finish"<<std::endl;
@@ -1149,13 +1303,12 @@ void displayBunny() {
     // Draw the model
     drawBunnyModel();
 }
-
 void displayQuad(){
-
+    
 	float angleRad = (float)(10 / 180.0) * M_PI;
    
 	// Compute the modeling matrix 
-	glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(0.f, -2.f, -4.f));
+	glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(0.f, -2.f, -2.f));
 	glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(3.0, 1.0, 1000.0));
 	glm::mat4 matR = glm::rotate<float>(glm::mat4(1.0), (-180. / 180.) * M_PI, glm::vec3(1.0, 0.0, 0.0));
 	glm::mat4 matRz = glm::rotate(glm::mat4(1.0), angleRad, glm::vec3(1.0, 0.0, 0.0));
@@ -1164,7 +1317,7 @@ void displayQuad(){
 	
     glUseProgram(groundProgram);
 
-// Set the uniform values
+    // Set the uniform values
     //GLint color1Location = glGetUniformLocation(groundProgram, "color1");
     //make color1 fuchsia
     glUniform3f(color1Location, 1.f,0.f,0.6f);
@@ -1172,7 +1325,7 @@ void displayQuad(){
     //make color2 turquoise
     glUniform3f(color2Location, 0.f,1.f,0.8f);
     //GLint scaleLocation = glGetUniformLocation(groundProgram, "scale");
-    glUniform1f(scaleLocation,1);
+    glUniform1f(scaleLocation,0.66);
 
     //GLint offsetLocation = glGetUniformLocation(groundProgram, "offset");
 
@@ -1186,10 +1339,10 @@ void displayQuad(){
 	drawGroundModel();
     offset.z -= gameSpeed;
     gameSpeed += gameAcceleration;
-
-	//angle += 0.9;
+    if(!pause){    score += 0.2;
 }
 
+}
 void displaySky(){
     float angleRad = (float)(90 / 180.0) * M_PI;
 
@@ -1210,29 +1363,35 @@ void displaySky(){
     drawSkyModel();
 }
 
-void drawCube()
-{
+void drawCube(){
     glDrawElements(GL_TRIANGLES, cube.gFaces.size() * 3, GL_UNSIGNED_INT, 0);
 }
 
 void displayCube(){
     float angleRad = (float)(10 / 180.0) * M_PI;
     glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(5, -2.f, -100.f));
-    glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(.5, 5.0,0.3));
-    glm::mat4 matR = glm::rotate<float>(glm::mat4(1.0), (-180. / 180.) * M_PI, glm::vec3(1.0, 0.0, 0.0));
-    glm::mat4 matRz = glm::rotate(glm::mat4(1.0), angleRad, glm::vec3(1.0, 0.0, 0.0));
+	glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(.5, 5.0,0.3));
+	glm::mat4 matR = glm::rotate<float>(glm::mat4(1.0), (-180. / 180.) * M_PI, glm::vec3(1.0, 0.0, 0.0));
+	glm::mat4 matRz = glm::rotate(glm::mat4(1.0), angleRad, glm::vec3(1.0, 0.0, 0.0));
 
-    cubeModelingMatrix = matT * matS ; // starting from right side, rotate around Y to turn back, then rotate around Z some more at each frame, then translate.
+	cubeModelingMatrix = matT * matS ; // starting from right side, rotate around Y to turn back, then rotate around Z some more at each frame, then translate.
+
     for(int i =0 ; i<3 ; i++){
+     
         cubeModelingMatrix = glm::translate(cubeModelingMatrix, glm::vec3(-5.f, 0.f, 0.f));
+
         if(colorRandomizer[i] == 0){
-            //red
+        //red
             glUniform3f(cubeColor1Location, 1.f,0.f,0.1f);
         }
         else{
             //make it yellow
             glUniform3f(cubeColor1Location, 1.f,1.f,0.1f);
         }
+        if(hittenCube == i){
+            continue;
+        }
+        
         glUniform3f(cubeLightPosLocation, 5.f,5.f,5.f);
         glUniform3f(cubeLightColorLocation, 1.f,1.f,1.f);
         glUniform1f(cubeScaleLocation,1);
@@ -1242,57 +1401,68 @@ void displayCube(){
         glUniformMatrix4fv(cubeModelingMatrixLoc, 1, GL_FALSE, glm::value_ptr(cubeModelingMatrix));
         glUniform3fv(cubeEyePosLoc, 0.7, glm::value_ptr(eyePos));
         drawCube();
-        if(Coffset.z >= 97.2){
-
-/*             Coffset.z = -2 ;
-            cubeRand();
- */        //this will handle if bunny and cube collide
+        
+        if(Coffset.z >= 96.8 && hitten == false){
             if( bunny.positionX+0.14 >= 1.00 && bunny.positionX-0.14 <= 1.50){
                 if(colorRandomizer[0] == 0){
                     //red
                     killBunny();
+                    hittenCube = 0;
+                    hitten = true;
                     std::cout<<"redcollusion"<<std::endl;
-                    score  -= 420;
-                }
+                    }
                 else{
-                    //yellow
-                    happyBunny();
+                   happyBunny();
                     std::cout<<"yellowc"<<std::endl;
-                    score  += 2024;
+
+                    score  += 1000;
+                    //gameSpeed += 0.04;
+                    //bunny.velocityX += 0.005;
+                    Coffset.z = -2 ;
+                    cubeRand();
+                
+
                 }
-                Coffset.z = -2 ;
-                cubeRand();
             }
             else if(bunny.positionX+0.14 >= -0.25 && bunny.positionX-0.14 <= 0.25){
                 ///
                 if(colorRandomizer[1] == 0){
                     killBunny();
+                    hittenCube = 1;
+                    hitten = true;
                     std::cout<<"redcollusion"<<std::endl;
-                    score  -= 420;
                 }
                 else{
                     //yellow
                     happyBunny();
                     std::cout<<"yellowc"<<std::endl;
-                    score  += 2024;
+                    score  += 1000;
+                    
+                    //gameSpeed += 0.04;
+                    //bunny.velocityX += 0.005;
+                    Coffset.z = -2 ;
+                    cubeRand();
+                    
+
                 }
-                Coffset.z = -2 ;
-                cubeRand();
             }
             else if(bunny.positionX+0.14 >= -1.50 && bunny.positionX-0.14 <= -1.00){
                 if(colorRandomizer[2] == 0){
                     killBunny();
+                    hittenCube = 2;
+                    hitten = true;
                     std::cout<<"redcollusion"<<std::endl;
-                    score  -= 420;
                 }
                 else{
                     //yellow
                     happyBunny();
                     std::cout<<"yellowc"<<std::endl;
-                    score  += 2024;
+                    //gameSpeed += 0.04;
+                    score  += 1000;
+                    //bunny.velocityX += 0.005;
+                    Coffset.z = -2 ;
+                    cubeRand();
                 }
-                Coffset.z = -2 ;
-                cubeRand();
             }
             else{
                 if(Coffset.z >= 99){
@@ -1306,9 +1476,12 @@ void displayCube(){
     Coffset.z += gameSpeed;
 
 }
-
 void restart(){
+    hittenCube = -1;
+    hitten = false;
     score = 0;
+    gravity = -0.0025;
+    bunny.velocityX = moveSpeed;
     bunny.positionX = 0;
     bunny.positionY = 0;
     bunny.velocityY = 0;
@@ -1319,34 +1492,38 @@ void restart(){
     gameSpeed = 0.2;
     offset.z = 0;
     Coffset.z = 0;
+    moveRight = false;
+    moveLeft = false;
     cubeRand();
 
 }
 
-
 void display()
 {
-    if(restartState)
-    {
+    if(restartState){
         restart();
     }
-    if(!finished)
-    {
-        glClearColor(0, 0, 0, 1);
-        glClearDepth(1.0f);
-        glClearStencil(0);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-
-        displaySky();
-        displayBunny();
-        displayQuad();
-        glUseProgram(cubeProgram);
-        glBindVertexArray(vaoCube);
-        displayCube();
-        //checkCollision();
-
-        glBindVertexArray(0);
+    bunny.velocityX += 0.00004;
+     gravity -= 0.0000005;
+    gameSpeed += 0.00006;
+    glClearColor(0, 0, 0, 1);
+	glClearDepth(1.0f);
+	glClearStencil(0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    displaySky();
+    displayBunny();
+    displayQuad();
+    glUseProgram(cubeProgram);
+    glBindVertexArray(vaoCube);
+    displayCube();
+    std::string text = "Score: " + std::to_string(int(score));
+    if(faint || finished){
+    renderText( text , 25.0f, 630.0f, 1.0f, glm::vec3(1.0, 0.f, 0.f));}
+    else{
+        renderText( text , 25.0f, 630.0f, 1.0f, glm::vec3(1., 1.f, 0.f));
     }
+    glBindVertexArray(0);
+    
 }
 
 void reshape(GLFWwindow* window, int w, int h)
@@ -1369,56 +1546,7 @@ void reshape(GLFWwindow* window, int w, int h)
     //lookAt(eye, center, upvector)
 
 }
-void keyboard(GLFWwindow* window, int key, int scancode, int action, int mods)
-{
-    if (key == GLFW_KEY_Q && action == GLFW_PRESS)
-    {
-        glfwSetWindowShouldClose(window, GLFW_TRUE);
-    }
-    else if (key == GLFW_KEY_G && action == GLFW_PRESS)
-    {
-        activeProgramIndex = 0;
-    }
-    else if (key == GLFW_KEY_P && action == GLFW_PRESS)
-    {
-        activeProgramIndex = 1;
-    }
-    else if (key == GLFW_KEY_F && action == GLFW_PRESS)
-    {
-        glShadeModel(GL_FLAT);
-    }
-    else if (key == GLFW_KEY_S && action == GLFW_PRESS)
-    {
-        glShadeModel(GL_SMOOTH);
-    }
-    else if (key == GLFW_KEY_W && action == GLFW_PRESS)
-    {
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-    }
-    else if (key == GLFW_KEY_E && action == GLFW_PRESS)
-    {
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    }
-    else if (key == GLFW_KEY_A && action == GLFW_PRESS){
-        moveLeft = true;
-    }
-    else if (key == GLFW_KEY_A && action == GLFW_RELEASE){
-        moveLeft = false;
-    }
-    else if (key == GLFW_KEY_D && action == GLFW_PRESS){
-        moveRight = true;
-    }
-    else if (key == GLFW_KEY_D && action == GLFW_RELEASE){
-        moveRight = false;
-    }
-    else if ( key == GLFW_KEY_R && action == GLFW_PRESS){
-        restartState = true;
-    }
-    else if ( key == GLFW_KEY_R && action == GLFW_RELEASE){
-        restartState = false;
-    }
 
-}
 
 // Function to run the main rendering loop
 void mainLoop(GLFWwindow* window) {
@@ -1454,7 +1582,8 @@ int main(int argc, char** argv)   // Create Main Function For Bringing It All To
     //glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // uncomment this if on MacOS
     std::cout << "line 833" << std::endl;
-    int width = 1000, height = 800;
+     width = 1000;
+      height = 800;
     window = glfwCreateWindow(width, height, "Simple Example", NULL, NULL);
 
     if (!window)

@@ -1,5 +1,8 @@
 CXX = g++
-CXXFLAGS = -std=c++11 -arch arm64 -I$(shell brew --prefix glm)/include -I$(shell brew --prefix glew)/include -I$(shell brew --prefix glfw)/include -L$(shell brew --prefix glew)/lib -L$(shell brew --prefix glfw)/lib -lGLEW -lglfw -framework OpenGL
+CXXFLAGS = -std=c++11 -I/usr/include/glm -I/usr/include/GL -I/usr/include/GLFW -I/usr/include/freetype2
+
+# Linker flags for OpenGL, GLEW, and GLFW
+LDFLAGS = -L/usr/lib -lGLEW -lGL -lglfw -lfreetype
 
 # List of all .cpp files
 SOURCES = main.cpp
@@ -7,5 +10,15 @@ SOURCES = main.cpp
 # Name of the executable
 EXECUTABLE = bunnyRun
 
+# Default target
+all: myOpenGLApp
+
+# Compile and build the application
 myOpenGLApp: $(SOURCES)
-	$(CXX) $(CXXFLAGS) $(SOURCES) -o $(EXECUTABLE)
+	$(CXX) $(CXXFLAGS) $(SOURCES) $(LDFLAGS) -o $(EXECUTABLE)
+	./$(EXECUTABLE) 
+
+# Clean up
+clean:
+	rm -f $(EXECUTABLE) output.txt
+
